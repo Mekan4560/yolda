@@ -117,7 +117,7 @@
       var email = $('#aEmail').value.trim(), pass = $('#aPass').value;
       try {
         if (mode === 'up') {
-          var r = await sb.auth.signUp({ email: email, password: pass, options: { data: { name: $('#aName').value.trim(), phone: $('#aPhone').value.trim() } } });
+          var r = await sb.auth.signUp({ email: email, password: pass, options: { emailRedirectTo: location.origin + location.pathname, data: { name: $('#aName').value.trim(), phone: $('#aPhone').value.trim() } } });
           if (r.error) throw r.error;
           if (!r.data.session) {
             msg.innerHTML = '<div class="info">Emailingizga tasdiqlash xati yuborildi. Havolani bosing, soʻng shu yerda kiring.</div>';
