@@ -91,3 +91,6 @@ svg{flex-shrink:0}
 .stat .small{line-height:1.25}
 @media (min-width:600px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .card.chosen{outline:2px solid var(--accent)}
+.or{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:13px;margin:6px 0}
+.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+#oForm #agreeBtn{margin-top:6px}

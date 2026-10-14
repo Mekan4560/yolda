@@ -680,26 +680,43 @@
       html += '<div class="card empty">' + esc(t('driver_needed')) + '</div><a class="btn sec" href="#/profile">' + esc(t('to_profile')) + '</a>';
     } else if (!me.blocked) {
       var defTime = { morning: '07:00', day: '12:00', evening: '18:00', any: '09:00' }[req.time_pref];
+      var lastCar = ''; try { lastCar = localStorage.getItem('yolda-car') || ''; } catch (e) {}
       html += '<form class="card form" id="oForm">' +
-        '<div class="f"><div class="grow two"><div><label for="oPrice">' + esc(t('offer_price')) + '</label><input id="oPrice" type="number" inputmode="numeric" min="0" step="1000" required value="' + esc(req.budget || '') + '" placeholder="' + esc(t('price_ph')) + '"></div>' +
-        '<div><label for="oTime">' + esc(t('depart_time')) + '</label><input id="oTime" type="time" required value="' + defTime + '"></div></div></div>' +
-        '<div class="f"><div class="grow"><label for="oCar">' + esc(t('car')) + '</label><input id="oCar" required maxlength="80" placeholder="' + esc(t('car_ph')) + '"></div></div>' +
+        '<div class="f"><div class="grow"><label for="oCar">' + esc(t('car')) + '</label><input id="oCar" required maxlength="80" value="' + esc(lastCar) + '" placeholder="' + esc(t('car_ph')) + '"></div></div>' +
+        '<div class="f"><div class="grow"><label for="oTime">' + esc(t('depart_time')) + '</label><input id="oTime" type="time" required value="' + defTime + '"></div></div>' +
+        (req.budget
+          ? '<button class="btn" type="button" id="agreeBtn">' + esc(t('agree_price', { p: money(req.budget) })) + '</button>' +
+            '<div class="or"><span>' + esc(t('or_own_price')) + '</span></div>'
+          : '') +
+        '<div class="f"><div class="grow"><label for="oPrice">' + esc(t('offer_price')) + '</label><input id="oPrice" type="number" inputmode="numeric" min="0" step="1000" placeholder="' + esc(t('price_ph')) + '"></div></div>' +
         '<div class="f"><div class="grow"><label for="oComment">' + esc(t('comment')) + '</label><input id="oComment" maxlength="300"></div></div>' +
-        '<div id="oMsg"></div><button class="btn" type="submit">' + esc(t('send_offer')) + '</button></form>';
+        '<div id="oMsg"></div><button class="btn' + (req.budget ? ' sec' : '') + '" type="submit">' + esc(t('send_offer')) + '</button></form>';
     }
     view.innerHTML = html;
 
     var of = $('#oForm');
-    if (of) of.addEventListener('submit', async function (e) {
-      e.preventDefault();
-      var btn = of.querySelector('button[type=submit]'); btn.disabled = true;
+    async function sendOffer(price, btn) {
+      var msg = $('#oMsg'); msg.innerHTML = '';
+      var car = $('#oCar').value.trim(), time = $('#oTime').value;
+      if (!car) { msg.innerHTML = errorBox({ message: t('need_car') }); $('#oCar').focus(); return; }
+      if (!time) { msg.innerHTML = errorBox({ message: t('need_time') }); return; }
+      if (!(price >= 0) || price === null || isNaN(price)) { msg.innerHTML = errorBox({ message: t('need_price') }); $('#oPrice').focus(); return; }
+      btn.disabled = true;
+      try { localStorage.setItem('yolda-car', car); } catch (e) {}
       var ins = await sb.from('offers').insert({
-        request_id: req.id, driver_id: me.id, price: Number($('#oPrice').value),
-        depart_time: $('#oTime').value, car: $('#oCar').value.trim(), comment: $('#oComment').value.trim()
+        request_id: req.id, driver_id: me.id, price: price,
+        depart_time: time, car: car, comment: $('#oComment').value.trim()
       });
-      if (ins.error) { $('#oMsg').innerHTML = errorBox(ins.error); btn.disabled = false; return; }
+      if (ins.error) { msg.innerHTML = errorBox(ins.error); btn.disabled = false; return; }
       toast(t('offer_sent')); renderRequest(req.id);
+    }
+    if (of) of.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var v = $('#oPrice').value;
+      sendOffer(v === '' ? NaN : Number(v), of.querySelector('button[type=submit]'));
     });
+    var agree = $('#agreeBtn');
+    if (agree) agree.addEventListener('click', function () { sendOffer(Number(req.budget), agree); });
     var wd = $('#withdraw');
     if (wd) wd.addEventListener('click', async function () {
       wd.disabled = true;
