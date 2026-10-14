@@ -222,7 +222,8 @@
       '<div class="grow"><label for="sDate">' + esc(t('date')) + '</label><input id="sDate" type="date" min="' + isoDate() + '" value="' + esc(last.date) + '"></div></div>' +
       '<button class="btn" type="submit">' + esc(t('search_btn')) + '</button></form>' +
       '<button class="btn sec" type="button" id="toRequest">' + esc(t('req_new_btn')) + '</button>' +
-      '<p class="small muted">' + esc(t('req_hint')) + '</p>';
+      '<p class="small muted">' + esc(t('req_hint')) + '</p>' +
+      '<h2>' + esc(t('upcoming')) + '</h2><div id="upcoming"><div class="spinner"></div></div>';
     bindRegion('sFrom', 'sFromD', true);
     bindRegion('sTo', 'sToD', true);
     $('#sForm').addEventListener('submit', function (e) {
@@ -236,6 +237,19 @@
       renderSearch.last = q;
       location.hash = '#/request/new?' + qs(q);
     });
+    loadUpcoming();
+  }
+
+  async function loadUpcoming() {
+    var r = await sb.from('trips').select('*, driver:profiles(name)')
+      .eq('status', 'open').gt('seats_free', 0).gte('depart_at', new Date().toISOString())
+      .order('depart_at').limit(20);
+    var box = document.getElementById('upcoming');
+    if (!box) return; // экран уже сменился
+    if (r.error) { box.innerHTML = errorBox(r.error); return; }
+    box.innerHTML = r.data.length
+      ? '<div style="display:flex;flex-direction:column;gap:12px">' + r.data.map(tripCard).join('') + '</div>'
+      : '<div class="card empty">' + esc(t('no_upcoming')) + '</div>';
   }
 
   async function renderResults(q) {
@@ -254,9 +268,19 @@
       '<span class="small muted">' + esc(dayLabel(start)) + ' · ' + esc(t('trips_count', { n: r.data ? r.data.length : 0 })) + '</span></div></div>';
     if (r.error) { view.innerHTML = head + errorBox(r.error); return; }
     var reqBtn = '<a class="btn' + (r.data.length ? ' sec' : '') + '" href="#/request/new?' + qs(q) + '">' + esc(t('req_new_btn')) + '</a>';
-    if (!r.data.length) { view.innerHTML = head + '<div class="card empty">' + t('none_found') + '</div>' + reqBtn; return; }
-    view.innerHTML = head + r.data.map(tripCard).join('') + reqBtn; return;
-    view.innerHTML = head + r.data.map(tripCard).join('');
+    if (r.data.length) { view.innerHTML = head + r.data.map(tripCard).join('') + reqBtn; return; }
+    // На эту дату пусто — показываем тот же маршрут на другие дни
+    var other = sb.from('trips').select('*, driver:profiles(name)')
+      .eq('status', 'open').gt('seats_free', 0)
+      .eq('from_region', q.from).eq('to_region', q.to)
+      .gte('depart_at', new Date().toISOString()).order('depart_at').limit(20);
+    if (q.fromD && q.fromD !== '*') other = other.eq('from_district', q.fromD);
+    if (q.toD && q.toD !== '*') other = other.eq('to_district', q.toD);
+    var o = await other;
+    var otherHtml = (o.data && o.data.length)
+      ? '<h2>' + esc(t('other_dates')) + '</h2>' + o.data.map(tripCard).join('')
+      : '';
+    view.innerHTML = head + '<div class="card empty">' + t('none_found') + '</div>' + otherHtml + reqBtn;
   }
 
   function tripCard(x) {
@@ -267,7 +291,8 @@
       '<div class="row"><span class="ava">' + initials(name) + '</span>' +
       '<div class="grow"><span class="t">' + esc(name) + '</span><span class="small muted">' + esc(x.car || '') + '</span></div>' +
       '<span class="price num">' + money(x.price) + '</span></div>' +
-      '<div class="row wrap" style="gap:8px"><span class="tag">' + esc(t('seats_free', { n: x.seats_free })) + '</span>' +
+      '<div class="row wrap" style="gap:8px">' + (me && x.driver_id === me.id ? '<span class="tag pending">' + esc(t('own_trip')) + '</span>' : '') +
+      '<span class="tag">' + esc(t('seats_free', { n: x.seats_free })) + '</span>' +
       (x.options || []).map(function (o) { return '<span class="tag">' + esc(optLabel(o)) + '</span>'; }).join('') + '</div></a>';
   }
 
