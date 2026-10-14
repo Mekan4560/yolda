@@ -1,0 +1,8 @@
+{
+  "appId": "uz.yolda.app",
+  "appName": "Yoʻlda",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0B6E79"
+  }
+}

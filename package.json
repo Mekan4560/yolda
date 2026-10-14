@@ -1,0 +1,18 @@
+{
+  "name": "yolda",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Yoʻlda — межгородские попутчики по Узбекистану",
+  "scripts": {
+    "build:web": "bash scripts/build-web.sh",
+    "android:prepare": "npm run build:web && npx cap add android && npx capacitor-assets generate --android && npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.2.1",
+    "@capacitor/core": "6.2.1"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "6.2.1"
+  }
+}
