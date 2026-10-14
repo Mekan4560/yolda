@@ -722,8 +722,9 @@
       '<div class="card form"><div class="f"><div class="grow"><label for="fFrom">' + esc(t('from')) + '</label><select id="fFrom">' +
       '<option value="*">' + esc(t('any_region')) + '</option>' + regionOptions(region) + '</select></div></div></div>';
     if (res[0].error) html += errorBox(res[0].error);
-    var list = (res[0].data || []).filter(function (r) { return r.passenger_id !== me.id; });
+    var list = res[0].data || [];
     html += list.length ? list.map(function (r) {
+      if (r.passenger_id === me.id) return requestCard(r, '<span class="tag">' + esc(t('own_request')) + '</span>');
       return requestCard(r, offered[r.id] ? '<span class="tag pending">' + esc(t('of_pending')) + '</span>' : '');
     }).join('') : '<div class="card empty">' + esc(t('feed_empty')) + '</div>';
     view.innerHTML = html;

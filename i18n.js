@@ -64,7 +64,7 @@ window.I18N = {
     of_pending: 'Javob kutilmoqda', of_accepted: 'Sizni tanlashdi!', of_rejected: 'Boshqa haydovchi tanlandi', of_withdrawn: 'Qaytarib olingan',
     passenger_phone: 'Yoʻlovchi telefoni', my_offers: 'Mening takliflarim', no_offers_my: 'Hali taklif yubormagansiz.',
     req_closed_note: 'Bu soʻrov yopilgan.', driver_needed: 'Taklif yuborish uchun Profilda «Haydovchi» rolini tanlang.',
-    own_request: 'Bu sizning soʻrovingiz.',
+    own_request: 'Sizning soʻrovingiz',
     opt_ac: 'Konditsioner', opt_nosmoke: 'Chekilmaydi', opt_luggage: 'Yuk uchun joy', opt_women: 'Faqat ayollar uchun',
     months: ['yanvar', 'fevral', 'mart', 'aprel', 'may', 'iyun', 'iyul', 'avgust', 'sentabr', 'oktabr', 'noyabr', 'dekabr']
   },
@@ -132,7 +132,7 @@ window.I18N = {
     of_pending: 'Ждёт ответа', of_accepted: 'Вас выбрали!', of_rejected: 'Выбран другой водитель', of_withdrawn: 'Отозвано',
     passenger_phone: 'Телефон пассажира', my_offers: 'Мои предложения', no_offers_my: 'Вы ещё не отправляли предложений.',
     req_closed_note: 'Эта заявка уже закрыта.', driver_needed: 'Чтобы отправлять предложения, выберите в профиле роль «Водитель».',
-    own_request: 'Это ваша заявка.',
+    own_request: 'Ваша заявка',
     opt_ac: 'Кондиционер', opt_nosmoke: 'Не курят', opt_luggage: 'Место для багажа', opt_women: 'Только для женщин',
     months: ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря']
   }
