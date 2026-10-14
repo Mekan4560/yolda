@@ -178,8 +178,12 @@ grant update (status, meeting_point, car, price, options) on public.trips to aut
 revoke update on public.bookings from anon, authenticated;
 grant update (status) on public.bookings to authenticated;
 
-revoke execute on function public.my_profile() from anon;
-revoke execute on function public.trip_contacts(bigint) from anon;
+revoke execute on function public.my_profile() from public, anon;
+revoke execute on function public.trip_contacts(bigint) from public, anon;
+grant execute on function public.my_profile() to authenticated;
+grant execute on function public.trip_contacts(bigint) to authenticated;
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
+revoke execute on function public.sync_seats() from public, anon, authenticated;
 
 -- Пассажир может отменить свою заявку
 drop policy if exists "bookings passenger cancel" on public.bookings;
