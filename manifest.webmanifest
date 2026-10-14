@@ -1,0 +1,16 @@
+{
+  "name": "Yoʻlda — shaharlararo hamsafarlar",
+  "short_name": "Yoʻlda",
+  "description": "Shahardan shaharga — birga va arzonroq",
+  "lang": "uz",
+  "start_url": "./#/search",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F2F5F6",
+  "theme_color": "#0B6E79",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
