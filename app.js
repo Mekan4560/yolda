@@ -155,7 +155,10 @@
       '<div class="f"><div class="grow"><label for="aPass">' + esc(t('password')) + '</label><input id="aPass" required type="password" minlength="6" autocomplete="' + (mode === 'up' ? 'new-password' : 'current-password') + '" placeholder="' + esc(t('pass_ph')) + '"></div></div>' +
       '<div id="authMsg"></div>' +
       '<button class="btn" type="submit">' + esc(mode === 'up' ? t('signup') : t('login')) + '</button></form>' +
-      '<p class="small muted">' + esc(t('test_note')) + '</p>';
+      '<p class="small muted">' + esc(t('test_note')) + '</p>' +
+      (window.Capacitor ? '' : '<a class="btn sec" href="https://github.com/Mekan4560/yolda/releases/download/android-latest/yolda.apk">' +
+        '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-right:8px"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>' +
+        esc(t('download_android')) + '</a>');
 
     bindLang();
     $all('[data-mode]').forEach(function (b) {

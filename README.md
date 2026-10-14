@@ -69,6 +69,18 @@ window.YOLDA_CONFIG = {
 | `supabase/003_requests_offers.sql` | Заявки пассажиров и предложения водителей |
 | `manifest.webmanifest`, `sw.js`, `icon*` | Установка на телефон |
 
+## Android-приложение
+
+APK собирается автоматически (GitHub Actions, файл `.github/workflows/android.yml`) при каждом обновлении кода и выкладывается по постоянной ссылке:
+
+**https://github.com/Mekan4560/yolda/releases/download/android-latest/yolda.apk**
+
+Установка: открыть ссылку на телефоне → скачать → открыть файл → разрешить установку из этого источника.
+
+Это тестовая сборка (подписана отладочным ключом). Для Google Play нужна сборка с собственным ключом подписи и аккаунт разработчика Google Play.
+
+Локально: `npm ci && npm run android:prepare`, затем открыть папку `android/` в Android Studio.
+
 ## Что дальше
 
 - Вход по SMS (нужен SMS-провайдер, платно)
