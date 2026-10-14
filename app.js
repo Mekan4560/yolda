@@ -101,7 +101,7 @@
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 140 140" aria-hidden="true"><path d="M70 26c-18 0-32 14-32 32 0 24 32 56 32 56s32-32 32-56c0-18-14-32-32-32z" fill="' + fill + '"/><path d="M60 92 C 64 74, 76 64, 74 46" stroke="' + road + '" stroke-width="9" fill="none" stroke-linecap="round"/></svg>';
   }
   function isDriver() { return me && me.role === 'driver'; }
-  function homeHash() { return isDriver() ? '#/requests' : '#/search'; }
+  function homeHash() { return me && me.is_admin ? '#/admin' : isDriver() ? '#/requests' : '#/search'; }
 
   // ---------- нижнее меню (зависит от роли) ----------
   var ICONS = {
@@ -114,8 +114,7 @@
   };
   function setTab(name) {
     if (!me) { tabs.hidden = true; return; }
-    var list = isDriver() ? ['requests', 'mine', 'add', 'profile'] : ['search', 'mine', 'profile'];
-    if (me.is_admin) list.push('admin');
+    var list = me.is_admin ? ['admin', 'profile'] : isDriver() ? ['requests', 'mine', 'add', 'profile'] : ['search', 'mine', 'profile'];
     tabs.hidden = false;
     tabs.innerHTML = '<div class="tabs-in" style="grid-template-columns:repeat(' + list.length + ',minmax(0,1fr))">' +
       list.map(function (k) {
@@ -247,6 +246,8 @@
     var box = document.getElementById('upcoming');
     if (!box) return; // экран уже сменился
     if (r.error) { box.innerHTML = errorBox(r.error); return; }
+    await loadRatings(r.data.map(function (x) { return x.driver_id; }));
+    if (!document.getElementById('upcoming')) return;
     box.innerHTML = r.data.length
       ? '<div style="display:flex;flex-direction:column;gap:12px">' + r.data.map(tripCard).join('') + '</div>'
       : '<div class="card empty">' + esc(t('no_upcoming')) + '</div>';
@@ -268,6 +269,7 @@
       '<span class="small muted">' + esc(dayLabel(start)) + ' · ' + esc(t('trips_count', { n: r.data ? r.data.length : 0 })) + '</span></div></div>';
     if (r.error) { view.innerHTML = head + errorBox(r.error); return; }
     var reqBtn = '<a class="btn' + (r.data.length ? ' sec' : '') + '" href="#/request/new?' + qs(q) + '">' + esc(t('req_new_btn')) + '</a>';
+    await loadRatings(r.data.map(function (x) { return x.driver_id; }));
     if (r.data.length) { view.innerHTML = head + r.data.map(tripCard).join('') + reqBtn; return; }
     // На эту дату пусто — показываем тот же маршрут на другие дни
     var other = sb.from('trips').select('*, driver:profiles(name)')
@@ -277,11 +279,30 @@
     if (q.fromD && q.fromD !== '*') other = other.eq('from_district', q.fromD);
     if (q.toD && q.toD !== '*') other = other.eq('to_district', q.toD);
     var o = await other;
+    await loadRatings((o.data || []).map(function (x) { return x.driver_id; }));
     var otherHtml = (o.data && o.data.length)
       ? '<h2>' + esc(t('other_dates')) + '</h2>' + o.data.map(tripCard).join('')
       : '';
     view.innerHTML = head + '<div class="card empty">' + t('none_found') + '</div>' + otherHtml + reqBtn;
   }
+
+  // ---------- рейтинг водителей ----------
+  var ratingCache = {};
+  async function loadRatings(ids) {
+    var need = ids.filter(function (id, i) { return id && ids.indexOf(id) === i && !ratingCache[id]; });
+    if (!need.length) return;
+    var r = await sb.rpc('driver_ratings', { p_ids: need });
+    (r.data || []).forEach(function (x) { ratingCache[x.driver_id] = { a: Number(x.avg_rating), n: Number(x.reviews_count) }; });
+    need.forEach(function (id) { if (!ratingCache[id]) ratingCache[id] = { a: 0, n: 0 }; });
+  }
+  function ratingText(id) {
+    var r = ratingCache[id];
+    if (!r || !r.n) return esc(t('new_driver'));
+    return '★ ' + String(r.a.toFixed(1)).replace('.', lang === 'ru' ? ',' : '.') + ' (' + r.n + ')';
+  }
+  function ratingSpan(id) { return '<span class="rating small">' + ratingText(id) + '</span>'; }
+  function ratingLink(id) { return '<a class="rating small" href="#/reviews/' + id + '">' + ratingText(id) + '</a>'; }
+  function stars(n) { var s = ''; for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return '<span class="stars" aria-label="' + n + '/5">' + s + '</span>'; }
 
   function tripCard(x) {
     var name = (x.driver && x.driver.name) || t('driver');
@@ -289,7 +310,7 @@
       '<div class="times"><span class="time num">' + hm(x.depart_at) + '</span><span class="line"></span><span class="small muted">' + esc(dayLabel(x.depart_at)) + '</span></div>' +
       '<div class="row between small"><span>' + place(x.from_region, x.from_district) + '</span><span style="text-align:right">' + place(x.to_region, x.to_district) + '</span></div>' +
       '<div class="row"><span class="ava">' + initials(name) + '</span>' +
-      '<div class="grow"><span class="t">' + esc(name) + '</span><span class="small muted">' + esc(x.car || '') + '</span></div>' +
+      '<div class="grow"><span class="t">' + esc(name) + ' ' + ratingSpan(x.driver_id) + '</span><span class="small muted">' + esc(x.car || '') + '</span></div>' +
       '<span class="price num">' + money(x.price) + '</span></div>' +
       '<div class="row wrap" style="gap:8px">' + (me && x.driver_id === me.id ? '<span class="tag pending">' + esc(t('own_trip')) + '</span>' : '') +
       '<span class="tag">' + esc(t('seats_free', { n: x.seats_free })) + '</span>' +
@@ -307,8 +328,11 @@
     var b = await sb.from('bookings').select('*').eq('trip_id', id).eq('passenger_id', me.id).maybeSingle();
     var booking = b.data;
     var name = (x.driver && x.driver.name) || t('driver');
-    var driverPhone = '';
+    var driverPhone = '', myReview = null;
+    await loadRatings([x.driver_id]);
     if (booking && booking.status === 'accepted') {
+      var rv = await sb.from('reviews').select('*').eq('author_id', me.id).eq('trip_id', Number(id)).maybeSingle();
+      myReview = rv.data || null;
       var c = await sb.rpc('trip_contacts', { p_trip: Number(id) });
       var d = (c.data || []).filter(function (y) { return y.user_id === x.driver_id; })[0];
       driverPhone = d ? d.phone : '';
@@ -321,7 +345,7 @@
       '<div class="stop" style="min-height:0"><span class="small muted">' + esc(dayLabel(x.depart_at)) + '</span><div class="rail"><span class="dot" style="background:var(--accent)"></span></div>' +
       '<div><div class="t">' + esc(x.to_district) + '</div><div class="small muted">' + esc(x.to_region) + '</div></div></div></div>' +
       '<div class="card pad"><div class="row"><span class="ava">' + initials(name) + '</span><div class="grow"><span class="t">' + esc(name) + '</span>' +
-      '<span class="small muted">' + esc(x.car || '') + '</span></div></div>' +
+      '<span class="small muted">' + esc(x.car || '') + '</span></div>' + ratingLink(x.driver_id) + '</div>' +
       (driverPhone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(driverPhone) + '</b></div>' : '') +
       ((x.options || []).length ? '<div class="row wrap" style="gap:8px">' + x.options.map(function (o) { return '<span class="tag">' + esc(optLabel(o)) + '</span>'; }).join('') + '</div>' : '') +
       '</div>';
@@ -330,6 +354,7 @@
       html += '<div class="card pad"><div class="row between"><span class="t">' + esc(t('your_request')) + '</span><span class="tag ' + booking.status + '">' + esc(t('st_' + booking.status)) + '</span></div>' +
         '<span class="small muted">' + esc(t('seats_n', { n: booking.seats })) + ' · ' + money(booking.seats * x.price) + '</span>' +
         (booking.status === 'pending' || booking.status === 'accepted' ? '<button class="btn sec sm" id="cancelBtn">' + esc(t('cancel')) + '</button>' : '') + '</div>';
+      if (booking.status === 'accepted') html += reviewBlock(myReview);
     } else if (booking && booking.status === 'cancelled') {
       html += '<div class="card empty">' + esc(t('prev_cancelled')) + '</div>';
     } else if (x.seats_free > 0 && x.status === 'open' && !me.blocked) {
@@ -354,6 +379,7 @@
       toast(t('request_sent'));
       renderTrip(id);
     });
+    bindReviewForm({ driver_id: x.driver_id, trip_id: x.id }, function () { delete ratingCache[x.driver_id]; renderTrip(id); });
     var cancelBtn = $('#cancelBtn');
     if (cancelBtn) cancelBtn.addEventListener('click', async function () {
       cancelBtn.disabled = true;
@@ -538,13 +564,17 @@
     setTab('profile');
     view.innerHTML = '<h1>' + esc(t('profile')) + '</h1>' + blockedBanner() +
       '<span class="section-label">' + esc(t('language')) + '</span>' + langSwitch() +
-      '<span class="section-label">' + esc(t('role')) + '</span><div class="roles">' + roleCard('passenger', me.role) + roleCard('driver', me.role) + '</div>' +
+      (me.is_admin ? '<div class="info">' + esc(t('admin_badge')) + '</div>' :
+        '<span class="section-label">' + esc(t('role')) + '</span><div class="roles">' + roleCard('passenger', me.role) + roleCard('driver', me.role) + '</div>') +
       '<form class="card form" id="pForm">' +
       '<div class="f"><div class="grow"><label for="pName">' + esc(t('name')) + '</label><input id="pName" required value="' + esc(me.name) + '"></div></div>' +
       '<div class="f"><div class="grow"><label for="pPhone">' + esc(t('phone')) + '</label><input id="pPhone" type="tel" required value="' + esc(me.phone) + '"></div></div>' +
       '<div class="f"><div class="grow"><span class="lbl">' + esc(t('email')) + '</span><span class="t">' + esc(me.email) + '</span></div></div>' +
       '<button class="btn" type="submit">' + esc(t('save')) + '</button></form>' +
       '<p class="small muted">' + esc(t('phone_note')) + '</p>' +
+      '<form class="card form" id="pwForm"><div class="f"><div class="grow"><label for="pwNew">' + esc(t('new_password')) + '</label>' +
+      '<input id="pwNew" type="password" minlength="6" required autocomplete="new-password" placeholder="' + esc(t('pass_ph')) + '"></div></div>' +
+      '<button class="btn sec" type="submit">' + esc(t('change_password')) + '</button></form>' +
       '<button class="btn sec" id="logout">' + esc(t('logout')) + '</button>';
     bindLang();
     $all('[data-role]').forEach(function (b) {
@@ -562,6 +592,14 @@
       var up = await sb.from('profiles').update({ name: name, phone: phone }).eq('id', me.id);
       if (up.error) { toast(up.error.message); return; }
       me.name = name; me.phone = phone; toast(t('saved'));
+    });
+    $('#pwForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var btn = this.querySelector('button'); btn.disabled = true;
+      var up = await sb.auth.updateUser({ password: $('#pwNew').value });
+      btn.disabled = false;
+      if (up.error) { toast(up.error.message); return; }
+      $('#pwNew').value = ''; toast(t('password_changed'));
     });
     $('#logout').addEventListener('click', async function () {
       renderLogin.mode = 'in';
@@ -640,17 +678,136 @@
       (!mineReq ? '<span class="small muted">' + esc(t('passenger')) + ': ' + esc((req.passenger && req.passenger.name) || '') + '</span>' : '') +
       '</div>';
 
-    if (mineReq) return renderRequestPassenger(req, head);
-    return renderRequestDriver(req, head);
+    if (me.is_admin) { setTab('admin'); view.innerHTML = head.replace(back('#/requests'), back('#/admin')); }
+    else if (mineReq) await renderRequestPassenger(req, head);
+    else await renderRequestDriver(req, head);
+    await renderComments(req);
   }
+
+  // ---------- комментарии к заявке ----------
+  async function renderComments(req) {
+    var c = await sb.from('request_comments').select('*, author:profiles(name)').eq('request_id', req.id).order('created_at');
+    var list = c.data || [];
+    var box = document.createElement('section');
+    box.className = 'comments';
+    var canWrite = req.status !== 'cancelled' && !me.blocked;
+    box.innerHTML = '<h2>' + esc(t('comments')) + '</h2>' +
+      (c.error ? errorBox(c.error) : '') +
+      (list.length ? list.map(function (x) {
+        var n = (x.author && x.author.name) || '—';
+        var who = x.author_id === req.passenger_id ? t('passenger') : t('driver');
+        var mine = x.author_id === me.id;
+        return '<div class="comment' + (mine ? ' mine' : '') + '"><div class="row between"><span class="t small">' + esc(n) +
+          ' <span class="muted">· ' + esc(who) + '</span></span><span class="small muted num">' + esc(dayLabel(x.created_at)) + ' ' + hm(x.created_at) + '</span></div>' +
+          '<p>' + esc(x.text) + '</p>' +
+          (mine || me.is_admin ? '<button class="link-btn small" data-del-comment="' + x.id + '">' + esc(t('delete')) + '</button>' : '') + '</div>';
+      }).join('') : '<div class="card empty">' + esc(t('no_comments')) + '</div>') +
+      (canWrite ? '<form class="comment-form" id="cForm"><label for="cText" class="sr">' + esc(t('comment_write')) + '</label>' +
+        '<input id="cText" maxlength="500" required placeholder="' + esc(t('comment_write')) + '">' +
+        '<button class="btn sm" type="submit">' + esc(t('send')) + '</button></form>' : '');
+    view.appendChild(box);
+    var f = document.getElementById('cForm');
+    if (f) f.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var input = document.getElementById('cText'), text = input.value.trim();
+      if (!text) return;
+      var btn = f.querySelector('button'); btn.disabled = true;
+      var ins = await sb.from('request_comments').insert({ request_id: req.id, author_id: me.id, text: text });
+      if (ins.error) { toast(ins.error.message); btn.disabled = false; return; }
+      renderRequest(req.id);
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('[data-del-comment]'), function (b) {
+      b.addEventListener('click', async function () {
+        if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = t('confirm_q'); return; }
+        var del = await sb.from('request_comments').delete().eq('id', Number(b.getAttribute('data-del-comment'))).select('id');
+        if (del.error) { toast(del.error.message); return; }
+        if (!del.data || !del.data.length) { toast(t('need_005')); return; }
+        toast(t('deleted')); renderRequest(req.id);
+      });
+    });
+  }
+
+  // ---------- отзывы ----------
+  function reviewBlock(existing) {
+    if (existing) {
+      return '<div class="card pad"><span class="t">' + esc(t('your_review')) + '</span>' + stars(existing.rating) +
+        (existing.text ? '<p class="small">' + esc(existing.text) + '</p>' : '') + '</div>';
+    }
+    if (me.blocked) return '';
+    var btns = '';
+    for (var i = 1; i <= 5; i++) btns += '<button type="button" class="star" data-star="' + i + '" aria-label="' + i + '/5">☆</button>';
+    return '<form class="card pad" id="rvForm"><span class="t">' + esc(t('leave_review')) + '</span>' +
+      '<div class="star-row" role="group">' + btns + '</div>' +
+      '<label for="rvText" class="sr">' + esc(t('review_ph')) + '</label><textarea id="rvText" maxlength="500" rows="3" placeholder="' + esc(t('review_ph')) + '"></textarea>' +
+      '<div id="rvMsg"></div><button class="btn sm" type="submit">' + esc(t('send_review')) + '</button></form>';
+  }
+  function bindReviewForm(ref, onDone) {
+    var f = document.getElementById('rvForm');
+    if (!f) return;
+    var rating = 0;
+    var starBtns = Array.prototype.slice.call(f.querySelectorAll('[data-star]'));
+    starBtns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        rating = Number(b.getAttribute('data-star'));
+        starBtns.forEach(function (z) { var on = Number(z.getAttribute('data-star')) <= rating; z.textContent = on ? '★' : '☆'; z.classList.toggle('on', on); });
+      });
+    });
+    f.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var msg = document.getElementById('rvMsg'); msg.innerHTML = '';
+      if (!rating) { msg.innerHTML = errorBox({ message: t('pick_stars') }); return; }
+      var btn = f.querySelector('button[type=submit]'); btn.disabled = true;
+      var row = { author_id: me.id, driver_id: ref.driver_id, rating: rating, text: document.getElementById('rvText').value.trim() };
+      if (ref.trip_id) row.trip_id = ref.trip_id; else row.request_id = ref.request_id;
+      var ins = await sb.from('reviews').insert(row);
+      if (ins.error) { msg.innerHTML = errorBox(ins.error); btn.disabled = false; return; }
+      toast(t('review_sent')); onDone();
+    });
+  }
+
+  async function renderReviews(driverId) {
+    setTab(me.is_admin ? 'admin' : 'search');
+    loading();
+    var res = await Promise.all([
+      sb.from('profiles').select('name').eq('id', driverId).maybeSingle(),
+      sb.from('reviews').select('*, author:profiles!reviews_author_id_fkey(name)').eq('driver_id', driverId).order('created_at', { ascending: false })
+    ]);
+    delete ratingCache[driverId];
+    await loadRatings([driverId]);
+    var name = (res[0].data && res[0].data.name) || t('driver');
+    var list = res[1].data || [];
+    var html = '<div class="row">' + back('javascript:history.back()') + '<div class="grow"><h1>' + esc(t('reviews_title')) + '</h1>' +
+      '<span class="small muted">' + esc(name) + ' · ' + ratingText(driverId) + '</span></div></div>' +
+      (res[1].error ? errorBox(res[1].error) : '') +
+      (list.length ? list.map(function (r) {
+        return '<div class="card pad"><div class="row between">' + stars(r.rating) + '<span class="small muted">' + esc(dayLabel(r.created_at)) + '</span></div>' +
+          (r.text ? '<p>' + esc(r.text) + '</p>' : '') +
+          '<span class="small muted">' + esc((r.author && r.author.name) || '') + '</span>' +
+          (me.is_admin || r.author_id === me.id ? '<button class="link-btn small" data-del-review="' + r.id + '">' + esc(t('delete')) + '</button>' : '') + '</div>';
+      }).join('') : '<div class="card empty">' + esc(t('no_reviews')) + '</div>');
+    view.innerHTML = html;
+    $all('[data-del-review]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = t('confirm_q'); return; }
+        var del = await sb.from('reviews').delete().eq('id', Number(b.getAttribute('data-del-review'))).select('id');
+        if (del.error) { toast(del.error.message); return; }
+        if (!del.data || !del.data.length) { toast(t('need_005')); return; }
+        toast(t('deleted')); renderReviews(driverId);
+      });
+    });
+  }
+
 
   async function renderRequestPassenger(req, head) {
     var o = await sb.from('offers').select('*, driver:profiles(name)').eq('request_id', req.id).order('price');
     var offers = (o.data || []).filter(function (x) { return x.status !== 'withdrawn'; });
-    var phone = '';
+    await loadRatings(offers.map(function (x) { return x.driver_id; }));
+    var phone = '', chosenOffer = offers.filter(function (x) { return x.status === 'accepted'; })[0], myReview = null;
     if (req.status === 'closed') {
       var c = await sb.rpc('request_contacts', { p_request: Number(req.id) });
       phone = (c.data && c.data[0] && c.data[0].phone) || '';
+      var rv = await sb.from('reviews').select('*').eq('author_id', me.id).eq('request_id', Number(req.id)).maybeSingle();
+      myReview = rv.data || null;
     }
     var html = head + '<h2>' + esc(t('offers')) + '</h2>';
     if (!offers.length) html += '<div class="card empty">' + esc(req.status === 'open' ? t('no_offers') : t('req_closed_note')) + '</div>';
@@ -658,15 +815,17 @@
       var n = (x.driver && x.driver.name) || t('driver');
       var chosen = x.status === 'accepted';
       return '<div class="card pad' + (chosen ? ' chosen' : '') + '"><div class="row"><span class="ava">' + initials(n) + '</span>' +
-        '<div class="grow"><span class="t">' + esc(n) + '</span><span class="small muted">' + esc(x.car) + ' · ' + esc(x.depart_time) + '</span></div>' +
+        '<div class="grow"><span class="t">' + esc(n) + ' ' + ratingLink(x.driver_id) + '</span><span class="small muted">' + esc(x.car) + ' · ' + esc(x.depart_time) + '</span></div>' +
         '<span class="price num">' + money(x.price) + '</span></div>' +
         (x.comment ? '<span class="small muted">' + esc(x.comment) + '</span>' : '') +
         (chosen ? '<span class="tag" style="align-self:flex-start">' + esc(t('rq_closed')) + '</span>' + (phone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(phone) + '</b></div>' : '') : '') +
         (req.status === 'open' && x.status === 'pending' && !me.blocked ? '<button class="btn sm" data-choose="' + x.id + '">' + esc(t('choose')) + '</button>' : '') +
         '</div>';
     }).join('');
+    if (chosenOffer) html += reviewBlock(myReview);
     if (req.status === 'open') html += '<button class="btn sec" id="cancelReq">' + esc(t('cancel_req')) + '</button>';
     view.innerHTML = html;
+    if (chosenOffer) bindReviewForm({ driver_id: chosenOffer.driver_id, request_id: req.id }, function () { delete ratingCache[chosenOffer.driver_id]; renderRequest(req.id); });
 
     $all('[data-choose]').forEach(function (b) {
       b.addEventListener('click', async function () {
@@ -777,64 +936,104 @@
   }
 
   // ---------- мастер-аккаунт ----------
+  function adminError(err) {
+    var m = (err && err.message) || '';
+    return /Could not find the function|does not exist|schema cache/i.test(m) ? t('need_005') : m;
+  }
+  // Кнопка с подтверждением вторым нажатием
+  function confirmClick(selector, run) {
+    $all(selector).forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = t('confirm_q'); b.classList.add('danger'); return; }
+        b.disabled = true;
+        await run(b);
+      });
+    });
+  }
+
   async function renderAdmin(tab) {
     setTab('admin');
     if (!me.is_admin) { location.hash = homeHash(); return; }
     tab = tab || renderAdmin.tab || 'users';
     renderAdmin.tab = tab;
     loading();
-    var res = await Promise.all([sb.rpc('admin_stats'), tab === 'users' ? sb.rpc('admin_users') : sb.rpc('admin_trips')]);
+    var listCall = tab === 'users' ? sb.rpc('admin_users') : tab === 'trips' ? sb.rpc('admin_trips') : sb.rpc('admin_requests');
+    var res = await Promise.all([sb.rpc('admin_stats'), listCall]);
     if (res[0].error || res[1].error) { view.innerHTML = '<h1>' + esc(t('admin_title')) + '</h1>' + errorBox(res[0].error || res[1].error); return; }
     var s = res[0].data[0] || {};
     function stat(label, val) { return '<div class="stat"><span class="num">' + (val || 0) + '</span><span class="small muted">' + esc(t(label)) + '</span></div>'; }
     var html = '<h1>' + esc(t('admin_title')) + '</h1>' +
       '<div class="stats">' + stat('s_users', s.users) + stat('s_drivers', s.drivers) + stat('s_passengers', s.passengers) + stat('s_blocked', s.blocked) +
       stat('s_trips_open', s.trips_open) + stat('s_trips_total', s.trips_total) + stat('s_bookings', s.bookings_total) + stat('s_accepted', s.bookings_accepted) + '</div>' +
-      '<div class="seg"><button type="button" data-atab="users" class="' + (tab === 'users' ? 'on' : '') + '">' + esc(t('a_users')) + '</button>' +
-      '<button type="button" data-atab="trips" class="' + (tab === 'trips' ? 'on' : '') + '">' + esc(t('a_trips')) + '</button></div>';
+      '<div class="seg seg3">' +
+      ['users', 'trips', 'requests'].map(function (k) {
+        return '<button type="button" data-atab="' + k + '" class="' + (tab === k ? 'on' : '') + '">' + esc(t('a_' + k)) + '</button>';
+      }).join('') + '</div>';
 
+    var rows = res[1].data || [];
     if (tab === 'users') {
-      html += (res[1].data || []).map(function (u) {
+      html += rows.map(function (u) {
         var self = u.id === me.id;
         return '<div class="card pad"><div class="row"><span class="ava">' + initials(u.name) + '</span><div class="grow">' +
           '<span class="t">' + esc(u.name || '—') + (self ? ' <span class="muted small">(' + esc(t('you')) + ')</span>' : '') + '</span>' +
           '<span class="small muted">' + esc(u.email) + ' · <span class="num">' + esc(u.phone) + '</span></span></div></div>' +
           '<div class="row wrap" style="gap:8px"><span class="tag">' + esc(t(u.role)) + '</span>' +
           (u.is_admin ? '<span class="tag">' + esc(t('admin_badge')) + '</span>' : '') +
-          (u.blocked ? '<span class="tag cancelled">' + esc(t('blocked_badge')) + '</span>' : '') + '</div>' +
-          (self ? '' : '<button class="btn sec sm" data-block="' + u.id + '" data-val="' + (!u.blocked) + '">' + esc(u.blocked ? t('unblock') : t('block')) + '</button>') +
+          (u.blocked ? '<span class="tag cancelled">' + esc(t('blocked_badge')) + '</span>' : '') +
+          (u.role === 'driver' ? '<a class="tag" href="#/reviews/' + u.id + '">' + esc(t('reviews_title')) + '</a>' : '') + '</div>' +
+          (self || u.is_admin ? '' : '<div class="two"><button class="btn sec sm" data-block="' + u.id + '" data-val="' + (!u.blocked) + '">' + esc(u.blocked ? t('unblock') : t('block')) + '</button>' +
+            '<button class="btn sec sm" data-del-user="' + u.id + '">' + esc(t('delete_user')) + '</button></div>') +
           '</div>';
-      }).join('');
-    } else {
-      html += (res[1].data || []).map(function (x) {
+      }).join('') || '<div class="card empty">—</div>';
+    } else if (tab === 'trips') {
+      html += rows.map(function (x) {
         return '<div class="card pad"><div class="row between"><span class="t">' + esc(dayLabel(x.depart_at)) + ' · ' + hm(x.depart_at) + '</span>' +
           (x.status === 'open' ? '<span class="tag">' + esc(t('booked_x', { a: x.seats_total - x.seats_free, b: x.seats_total })) + '</span>' : '<span class="tag cancelled">' + esc(t('cancelled_lbl')) + '</span>') + '</div>' +
           '<div class="t">' + esc(x.from_district) + ' → ' + esc(x.to_district) + '</div>' +
           '<span class="small muted">' + esc(x.driver_name) + ' · <span class="num">' + esc(x.driver_phone) + '</span> · ' + money(x.price) + '</span>' +
           (Number(x.pending) ? '<span class="tag pending" style="align-self:flex-start">' + esc(t('requests_n', { n: x.pending })) + '</span>' : '') +
-          (x.status === 'open' ? '<button class="btn sec sm" data-cancel="' + x.id + '">' + esc(t('cancel_trip')) + '</button>' : '') + '</div>';
+          '<div class="two">' + (x.status === 'open' ? '<button class="btn sec sm" data-cancel="' + x.id + '">' + esc(t('cancel_trip')) + '</button>' : '<span></span>') +
+          '<button class="btn sec sm" data-del-trip="' + x.id + '">' + esc(t('delete_trip')) + '</button></div></div>';
+      }).join('') || '<div class="card empty">—</div>';
+    } else {
+      html += rows.map(function (r) {
+        return '<div class="card pad"><div class="row between"><span class="t">' + esc(dateLabel(r.ride_date)) + '</span>' +
+          '<span class="tag' + (r.status === 'cancelled' ? ' cancelled' : '') + '">' + esc(t('rq_' + r.status)) + '</span></div>' +
+          '<div class="t">' + esc(r.from_district) + ' → ' + esc(r.to_district) + '</div>' +
+          '<span class="small muted">' + esc(r.passenger_name) + ' · <span class="num">' + esc(r.passenger_phone) + '</span>' +
+          (r.budget ? ' · ' + money(r.budget) : '') + '</span>' +
+          '<div class="row wrap" style="gap:8px"><span class="tag">' + esc(t('offers_n', { n: r.offers })) + '</span><span class="tag">' + esc(t('comments_n', { n: r.comments })) + '</span></div>' +
+          '<div class="two"><a class="btn sec sm" href="#/request/' + r.id + '">' + esc(t('open_lbl')) + '</a>' +
+          '<button class="btn sec sm" data-del-req="' + r.id + '">' + esc(t('delete_request')) + '</button></div></div>';
       }).join('') || '<div class="card empty">—</div>';
     }
     view.innerHTML = html;
 
     $all('[data-atab]').forEach(function (b) { b.addEventListener('click', function () { renderAdmin(b.getAttribute('data-atab')); }); });
-    $all('[data-block]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = t('confirm_q'); return; }
-        b.disabled = true;
-        var r = await sb.rpc('admin_set_blocked', { p_user: b.getAttribute('data-block'), p_blocked: b.getAttribute('data-val') === 'true' });
-        if (r.error) { toast(r.error.message); b.disabled = false; return; }
-        toast(t('saved')); renderAdmin('users');
-      });
+    confirmClick('[data-block]', async function (b) {
+      var r = await sb.rpc('admin_set_blocked', { p_user: b.getAttribute('data-block'), p_blocked: b.getAttribute('data-val') === 'true' });
+      if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
+      toast(t('saved')); renderAdmin('users');
     });
-    $all('[data-cancel]').forEach(function (b) {
-      b.addEventListener('click', async function () {
-        if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = t('confirm_q'); return; }
-        b.disabled = true;
-        var r = await sb.rpc('admin_cancel_trip', { p_trip: Number(b.getAttribute('data-cancel')) });
-        if (r.error) { toast(r.error.message); b.disabled = false; return; }
-        toast(t('trip_cancelled')); renderAdmin('trips');
-      });
+    confirmClick('[data-del-user]', async function (b) {
+      var r = await sb.rpc('admin_delete_user', { p_user: b.getAttribute('data-del-user') });
+      if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
+      toast(t('deleted')); renderAdmin('users');
+    });
+    confirmClick('[data-cancel]', async function (b) {
+      var r = await sb.rpc('admin_cancel_trip', { p_trip: Number(b.getAttribute('data-cancel')) });
+      if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
+      toast(t('trip_cancelled')); renderAdmin('trips');
+    });
+    confirmClick('[data-del-trip]', async function (b) {
+      var r = await sb.rpc('admin_delete_trip', { p_trip: Number(b.getAttribute('data-del-trip')) });
+      if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
+      toast(t('deleted')); renderAdmin('trips');
+    });
+    confirmClick('[data-del-req]', async function (b) {
+      var r = await sb.rpc('admin_delete_request', { p_request: Number(b.getAttribute('data-del-req')) });
+      if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
+      toast(t('deleted')); renderAdmin('requests');
     });
   }
 
@@ -855,6 +1054,8 @@
     var parts = path.split('/');
     if (!me && parts[0] !== 'login') { location.hash = '#/login'; return; }
     if (me && parts[0] === 'login') { location.hash = homeHash(); return; }
+    // Админ-аккаунт работает только с панелью управления
+    if (me && me.is_admin && ['admin', 'profile', 'request', 'reviews'].indexOf(parts[0]) === -1) { location.hash = '#/admin'; return; }
     window.scrollTo(0, 0);
     try {
       switch (parts[0]) {
@@ -866,6 +1067,7 @@
         case 'mine': await renderMine(); break;
         case 'profile': renderProfile(); break;
         case 'admin': await renderAdmin(); break;
+        case 'reviews': await renderReviews(parts[1]); break;
         case 'requests': await renderFeed(q); break;
         case 'request': if (parts[1] === 'new') renderRequestNew(q); else await renderRequest(parts[1]); break;
         default: renderSearch();
