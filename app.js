@@ -101,7 +101,7 @@
     return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 140 140" aria-hidden="true"><path d="M70 26c-18 0-32 14-32 32 0 24 32 56 32 56s32-32 32-56c0-18-14-32-32-32z" fill="' + fill + '"/><path d="M60 92 C 64 74, 76 64, 74 46" stroke="' + road + '" stroke-width="9" fill="none" stroke-linecap="round"/></svg>';
   }
   function isDriver() { return me && me.role === 'driver'; }
-  function homeHash() { return isDriver() ? '#/mine' : '#/search'; }
+  function homeHash() { return isDriver() ? '#/requests' : '#/search'; }
 
   // ---------- нижнее меню (зависит от роли) ----------
   var ICONS = {
@@ -109,11 +109,12 @@
     add: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
     mine: '<path d="M5 17h14l-1.5-6.5A2 2 0 0 0 15.6 9H8.4a2 2 0 0 0-1.9 1.5z"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="18" r="2"/>',
     profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
-    admin: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>'
+    admin: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+    requests: '<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>'
   };
   function setTab(name) {
     if (!me) { tabs.hidden = true; return; }
-    var list = isDriver() ? ['mine', 'add', 'search', 'profile'] : ['search', 'mine', 'profile'];
+    var list = isDriver() ? ['requests', 'mine', 'add', 'profile'] : ['search', 'mine', 'profile'];
     if (me.is_admin) list.push('admin');
     tabs.hidden = false;
     tabs.innerHTML = '<div class="tabs-in" style="grid-template-columns:repeat(' + list.length + ',minmax(0,1fr))">' +
@@ -216,7 +217,9 @@
       '<label for="sToD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="sToD">' + districtOptions(last.to, last.toD, true) + '</select></div></div>' +
       '<div class="f"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>' +
       '<div class="grow"><label for="sDate">' + esc(t('date')) + '</label><input id="sDate" type="date" min="' + isoDate() + '" value="' + esc(last.date) + '"></div></div>' +
-      '<button class="btn" type="submit">' + esc(t('search_btn')) + '</button></form>';
+      '<button class="btn" type="submit">' + esc(t('search_btn')) + '</button></form>' +
+      '<button class="btn sec" type="button" id="toRequest">' + esc(t('req_new_btn')) + '</button>' +
+      '<p class="small muted">' + esc(t('req_hint')) + '</p>';
     bindRegion('sFrom', 'sFromD', true);
     bindRegion('sTo', 'sToD', true);
     $('#sForm').addEventListener('submit', function (e) {
@@ -224,6 +227,11 @@
       var q = { from: $('#sFrom').value, fromD: $('#sFromD').value, to: $('#sTo').value, toD: $('#sToD').value, date: $('#sDate').value || tomorrow() };
       renderSearch.last = q;
       location.hash = '#/results?' + qs(q);
+    });
+    $('#toRequest').addEventListener('click', function () {
+      var q = { from: $('#sFrom').value, fromD: $('#sFromD').value, to: $('#sTo').value, toD: $('#sToD').value, date: $('#sDate').value || tomorrow() };
+      renderSearch.last = q;
+      location.hash = '#/request/new?' + qs(q);
     });
   }
 
@@ -242,7 +250,9 @@
     var head = '<div class="row">' + back('#/search') + '<div class="grow"><h1>' + esc(q.from) + ' → ' + esc(q.to) + '</h1>' +
       '<span class="small muted">' + esc(dayLabel(start)) + ' · ' + esc(t('trips_count', { n: r.data ? r.data.length : 0 })) + '</span></div></div>';
     if (r.error) { view.innerHTML = head + errorBox(r.error); return; }
-    if (!r.data.length) { view.innerHTML = head + '<div class="card empty">' + t('none_found') + '</div>'; return; }
+    var reqBtn = '<a class="btn' + (r.data.length ? ' sec' : '') + '" href="#/request/new?' + qs(q) + '">' + esc(t('req_new_btn')) + '</a>';
+    if (!r.data.length) { view.innerHTML = head + '<div class="card empty">' + t('none_found') + '</div>' + reqBtn; return; }
+    view.innerHTML = head + r.data.map(tripCard).join('') + reqBtn; return;
     view.innerHTML = head + r.data.map(tripCard).join('');
   }
 
@@ -445,9 +455,11 @@
     loading();
     var res = await Promise.all([
       sb.from('bookings').select('*, trip:trips(*, driver:profiles(name))').eq('passenger_id', me.id).order('created_at', { ascending: false }),
-      sb.from('trips').select('*, bookings(status)').eq('driver_id', me.id).order('depart_at', { ascending: false })
+      sb.from('trips').select('*, bookings(status)').eq('driver_id', me.id).order('depart_at', { ascending: false }),
+      sb.from('ride_requests').select('*, offers(status)').eq('passenger_id', me.id).order('created_at', { ascending: false }),
+      sb.from('offers').select('*, request:ride_requests(*)').eq('driver_id', me.id).order('created_at', { ascending: false })
     ]);
-    var bookings = res[0].data || [], trips = res[1].data || [];
+    var bookings = res[0].data || [], trips = res[1].data || [], reqs = res[2].data || [], myOffers = res[3].data || [];
     var html = '<h1>' + esc(t('mine')) + '</h1>' + blockedBanner();
     if (res[0].error || res[1].error) html += errorBox(res[0].error || res[1].error);
 
@@ -471,9 +483,25 @@
           '<span class="small muted">' + esc((x.driver && x.driver.name) || '') + ' · ' + esc(t('seats_n', { n: b.seats })) + '</span></a>';
       }).join('') : '<div class="card empty">' + esc(t('no_bookings')) + '</div>');
 
-    // Водителю сначала его рейсы, пассажиру — брони; второй блок показываем, только если там что-то есть
-    if (isDriver()) html += driverPart + (bookings.length ? passengerPart : '');
-    else html += passengerPart + (trips.length ? driverPart : '');
+    var reqPart = '<span class="section-label">' + esc(t('my_requests')) + '</span>' +
+      (reqs.length ? reqs.map(function (r) {
+        var cnt = (r.offers || []).filter(function (o) { return o.status !== 'withdrawn'; }).length;
+        var tag = r.status === 'open'
+          ? '<span class="tag' + (cnt ? ' pending' : '') + '">' + esc(t('offers_n', { n: cnt })) + '</span>'
+          : '<span class="tag' + (r.status === 'cancelled' ? ' cancelled' : '') + '">' + esc(t('rq_' + r.status)) + '</span>';
+        return requestCard(r, tag);
+      }).join('') : '<div class="card empty">' + esc(t('no_requests_my')) + '</div>' + (!me.blocked ? '<a class="btn sec" href="#/request/new">' + esc(t('req_new_btn')) + '</a>' : ''));
+
+    var offerPart = '<span class="section-label">' + esc(t('my_offers')) + '</span>' +
+      (myOffers.length ? myOffers.map(function (o) {
+        if (!o.request) return '';
+        var cls = o.status === 'accepted' ? '' : o.status === 'pending' ? ' pending' : ' cancelled';
+        return requestCard(o.request, '<span class="tag' + cls + '">' + esc(t('of_' + o.status)) + '</span>');
+      }).join('') : '<div class="card empty">' + esc(t('no_offers_my')) + '</div>');
+
+    // Порядок блоков зависит от роли; второстепенные блоки показываем, только если в них что-то есть
+    if (isDriver()) html += offerPart + driverPart + (bookings.length ? passengerPart : '') + (reqs.length ? reqPart : '');
+    else html += reqPart + passengerPart + (trips.length ? driverPart : '') + (myOffers.length ? offerPart : '');
     view.innerHTML = html;
   }
 
@@ -511,6 +539,195 @@
       renderLogin.mode = 'in';
       await sb.auth.signOut(); me = null; location.hash = '#/login';
     });
+  }
+
+  // ---------- заявки пассажиров ----------
+  function dateLabel(isoD) { return dayLabel(new Date(isoD + 'T12:00:00')); }
+  function requestCard(r, extra) {
+    return '<a class="trip" href="#/request/' + r.id + '">' +
+      '<div class="row between"><span class="t">' + esc(dateLabel(r.ride_date)) + ' · ' + esc(t('tp_' + r.time_pref)) + '</span>' + (extra || '') + '</div>' +
+      '<div class="row between small"><span>' + place(r.from_region, r.from_district) + '</span><span style="text-align:right">' + place(r.to_region, r.to_district) + '</span></div>' +
+      '<div class="row wrap" style="gap:8px"><span class="tag">' + esc(t('people_n', { n: r.seats })) + '</span>' +
+      (r.budget ? '<span class="price num" style="font-size:13px;padding:4px 8px">' + money(r.budget) + '</span>' : '') + '</div>' +
+      (r.comment ? '<span class="small muted">' + esc(r.comment) + '</span>' : '') + '</a>';
+  }
+
+  function renderRequestNew(q) {
+    setTab(isDriver() ? 'requests' : 'search');
+    if (me.blocked) { view.innerHTML = '<h1>' + esc(t('req_new_title')) + '</h1>' + blockedBanner(); return; }
+    var from = q.from || 'Toshkent shahri', to = q.to || 'Samarqand';
+    view.innerHTML = '<div class="row">' + back('#/search') + '<h1>' + esc(t('req_new_title')) + '</h1></div>' +
+      '<div class="info">' + esc(t('req_hint')) + '</div>' +
+      '<form class="card form" id="rForm">' +
+      '<div class="f"><span class="dot o"></span><div class="grow"><label for="rFrom">' + esc(t('from')) + '</label><select id="rFrom">' + regionOptions(from) + '</select>' +
+      '<label for="rFromD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="rFromD">' + districtOptions(from, q.fromD) + '</select></div></div>' +
+      '<div class="f"><span class="dot f"></span><div class="grow"><label for="rTo">' + esc(t('to')) + '</label><select id="rTo">' + regionOptions(to) + '</select>' +
+      '<label for="rToD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="rToD">' + districtOptions(to, q.toD) + '</select></div></div>' +
+      '<div class="f"><div class="grow two"><div><label for="rDate">' + esc(t('date')) + '</label><input id="rDate" type="date" required min="' + isoDate() + '" value="' + esc(q.date || tomorrow()) + '"></div>' +
+      '<div><label for="rTime">' + esc(t('time_pref')) + '</label><select id="rTime">' +
+      ['any', 'morning', 'day', 'evening'].map(function (k) { return '<option value="' + k + '">' + esc(t('tp_' + k)) + '</option>'; }).join('') + '</select></div></div></div>' +
+      '<div class="f"><div class="grow two"><div><label for="rSeats">' + esc(t('seats_need')) + '</label><select id="rSeats"><option>1</option><option>2</option><option>3</option><option>4</option></select></div>' +
+      '<div><label for="rBudget">' + esc(t('budget')) + '</label><input id="rBudget" type="number" inputmode="numeric" min="0" step="1000" placeholder="' + esc(t('budget_ph')) + '"></div></div></div>' +
+      '<div class="f"><div class="grow"><label for="rComment">' + esc(t('comment')) + '</label><input id="rComment" maxlength="300" placeholder="' + esc(t('comment_ph')) + '"></div></div>' +
+      '<div id="rMsg"></div><button class="btn" type="submit">' + esc(t('req_publish')) + '</button></form>';
+    bindRegion('rFrom', 'rFromD');
+    bindRegion('rTo', 'rToD');
+    $('#rForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var btn = this.querySelector('button[type=submit]'); btn.disabled = true;
+      var msg = $('#rMsg'); msg.innerHTML = '';
+      if ($('#rFrom').value === $('#rTo').value && $('#rFromD').value === $('#rToD').value) { msg.innerHTML = errorBox({ message: t('same_place') }); btn.disabled = false; return; }
+      var budget = $('#rBudget').value ? Number($('#rBudget').value) : null;
+      var ins = await sb.from('ride_requests').insert({
+        passenger_id: me.id,
+        from_region: $('#rFrom').value, from_district: $('#rFromD').value,
+        to_region: $('#rTo').value, to_district: $('#rToD').value,
+        ride_date: $('#rDate').value, time_pref: $('#rTime').value,
+        seats: Number($('#rSeats').value), budget: budget, comment: $('#rComment').value.trim()
+      }).select('id').single();
+      if (ins.error) { msg.innerHTML = errorBox(ins.error); btn.disabled = false; return; }
+      toast(t('req_published'));
+      location.hash = '#/request/' + ins.data.id;
+    });
+  }
+
+  async function renderRequest(id) {
+    loading();
+    var r = await sb.from('ride_requests').select('*, passenger:profiles(name)').eq('id', id).maybeSingle();
+    if (r.error || !r.data) { setTab('mine'); view.innerHTML = '<div class="row">' + back('#/mine') + '<h1>' + esc(t('request')) + '</h1></div>' + errorBox(r.error || { message: t('not_found') }); return; }
+    var req = r.data;
+    var mineReq = req.passenger_id === me.id;
+    setTab(mineReq ? 'mine' : 'requests');
+    var statusTag = '<span class="tag' + (req.status === 'cancelled' ? ' cancelled' : '') + '">' + esc(t('rq_' + req.status)) + '</span>';
+    var head = '<div class="row">' + back(mineReq ? '#/mine' : '#/requests') + '<h1>' + esc(t('request')) + '</h1></div>' + blockedBanner() +
+      '<div class="card pad">' +
+      '<div class="row between"><span class="t">' + esc(dateLabel(req.ride_date)) + ' · ' + esc(t('tp_' + req.time_pref)) + '</span>' + statusTag + '</div>' +
+      '<div class="stop"><span class="small muted">' + esc(t('from')) + '</span><div class="rail"><span class="dot"></span><span class="bar"></span></div>' +
+      '<div><div class="t">' + esc(req.from_district) + '</div><div class="small muted">' + esc(req.from_region) + '</div></div></div>' +
+      '<div class="stop" style="min-height:0"><span class="small muted">' + esc(t('to')) + '</span><div class="rail"><span class="dot" style="background:var(--accent)"></span></div>' +
+      '<div><div class="t">' + esc(req.to_district) + '</div><div class="small muted">' + esc(req.to_region) + '</div></div></div>' +
+      '<div class="row wrap" style="gap:8px"><span class="tag">' + esc(t('people_n', { n: req.seats })) + '</span>' +
+      (req.budget ? '<span class="price num" style="font-size:13px;padding:4px 8px">' + esc(t('budget_lbl')) + ': ' + money(req.budget) + '</span>' : '') + '</div>' +
+      (req.comment ? '<p class="small muted">' + esc(req.comment) + '</p>' : '') +
+      (!mineReq ? '<span class="small muted">' + esc(t('passenger')) + ': ' + esc((req.passenger && req.passenger.name) || '') + '</span>' : '') +
+      '</div>';
+
+    if (mineReq) return renderRequestPassenger(req, head);
+    return renderRequestDriver(req, head);
+  }
+
+  async function renderRequestPassenger(req, head) {
+    var o = await sb.from('offers').select('*, driver:profiles(name)').eq('request_id', req.id).order('price');
+    var offers = (o.data || []).filter(function (x) { return x.status !== 'withdrawn'; });
+    var phone = '';
+    if (req.status === 'closed') {
+      var c = await sb.rpc('request_contacts', { p_request: Number(req.id) });
+      phone = (c.data && c.data[0] && c.data[0].phone) || '';
+    }
+    var html = head + '<h2>' + esc(t('offers')) + '</h2>';
+    if (!offers.length) html += '<div class="card empty">' + esc(req.status === 'open' ? t('no_offers') : t('req_closed_note')) + '</div>';
+    html += offers.map(function (x) {
+      var n = (x.driver && x.driver.name) || t('driver');
+      var chosen = x.status === 'accepted';
+      return '<div class="card pad' + (chosen ? ' chosen' : '') + '"><div class="row"><span class="ava">' + initials(n) + '</span>' +
+        '<div class="grow"><span class="t">' + esc(n) + '</span><span class="small muted">' + esc(x.car) + ' · ' + esc(x.depart_time) + '</span></div>' +
+        '<span class="price num">' + money(x.price) + '</span></div>' +
+        (x.comment ? '<span class="small muted">' + esc(x.comment) + '</span>' : '') +
+        (chosen ? '<span class="tag" style="align-self:flex-start">' + esc(t('rq_closed')) + '</span>' + (phone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(phone) + '</b></div>' : '') : '') +
+        (req.status === 'open' && x.status === 'pending' && !me.blocked ? '<button class="btn sm" data-choose="' + x.id + '">' + esc(t('choose')) + '</button>' : '') +
+        '</div>';
+    }).join('');
+    if (req.status === 'open') html += '<button class="btn sec" id="cancelReq">' + esc(t('cancel_req')) + '</button>';
+    view.innerHTML = html;
+
+    $all('[data-choose]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        if (b.getAttribute('data-sure') !== '1') { b.setAttribute('data-sure', '1'); b.textContent = t('choose_confirm'); return; }
+        $all('[data-choose]').forEach(function (z) { z.disabled = true; });
+        var res = await sb.rpc('choose_offer', { p_offer: Number(b.getAttribute('data-choose')) });
+        if (res.error) { toast(res.error.message); renderRequest(req.id); return; }
+        toast(t('chosen_toast')); renderRequest(req.id);
+      });
+    });
+    var cr = $('#cancelReq');
+    if (cr) cr.addEventListener('click', async function () {
+      if (cr.getAttribute('data-sure') !== '1') { cr.setAttribute('data-sure', '1'); cr.textContent = t('confirm_q'); return; }
+      cr.disabled = true;
+      var up = await sb.from('ride_requests').update({ status: 'cancelled' }).eq('id', req.id);
+      if (up.error) { toast(up.error.message); cr.disabled = false; return; }
+      toast(t('cancelled_t')); renderRequest(req.id);
+    });
+  }
+
+  async function renderRequestDriver(req, head) {
+    var o = await sb.from('offers').select('*').eq('request_id', req.id).eq('driver_id', me.id).maybeSingle();
+    var my = o.data;
+    var html = head;
+    if (my) {
+      var phone = '';
+      if (my.status === 'accepted') {
+        var c = await sb.rpc('request_contacts', { p_request: Number(req.id) });
+        phone = (c.data && c.data[0] && c.data[0].phone) || '';
+      }
+      var cls = my.status === 'accepted' ? '' : my.status === 'pending' ? ' pending' : ' cancelled';
+      html += '<div class="card pad"><div class="row between"><span class="t">' + esc(t('your_offer')) + '</span><span class="tag' + cls + '">' + esc(t('of_' + my.status)) + '</span></div>' +
+        '<span class="small muted">' + esc(my.depart_time) + ' · ' + esc(my.car) + ' · ' + money(my.price) + '</span>' +
+        (phone ? '<div class="info">' + esc(t('passenger_phone')) + ': <b class="num">' + esc(phone) + '</b></div>' : '') +
+        (my.status === 'pending' ? '<button class="btn sec sm" id="withdraw">' + esc(t('withdraw')) + '</button>' : '') + '</div>';
+    } else if (req.status !== 'open') {
+      html += '<div class="card empty">' + esc(t('req_closed_note')) + '</div>';
+    } else if (!isDriver()) {
+      html += '<div class="card empty">' + esc(t('driver_needed')) + '</div><a class="btn sec" href="#/profile">' + esc(t('to_profile')) + '</a>';
+    } else if (!me.blocked) {
+      var defTime = { morning: '07:00', day: '12:00', evening: '18:00', any: '09:00' }[req.time_pref];
+      html += '<form class="card form" id="oForm">' +
+        '<div class="f"><div class="grow two"><div><label for="oPrice">' + esc(t('offer_price')) + '</label><input id="oPrice" type="number" inputmode="numeric" min="0" step="1000" required value="' + esc(req.budget || '') + '" placeholder="' + esc(t('price_ph')) + '"></div>' +
+        '<div><label for="oTime">' + esc(t('depart_time')) + '</label><input id="oTime" type="time" required value="' + defTime + '"></div></div></div>' +
+        '<div class="f"><div class="grow"><label for="oCar">' + esc(t('car')) + '</label><input id="oCar" required maxlength="80" placeholder="' + esc(t('car_ph')) + '"></div></div>' +
+        '<div class="f"><div class="grow"><label for="oComment">' + esc(t('comment')) + '</label><input id="oComment" maxlength="300"></div></div>' +
+        '<div id="oMsg"></div><button class="btn" type="submit">' + esc(t('send_offer')) + '</button></form>';
+    }
+    view.innerHTML = html;
+
+    var of = $('#oForm');
+    if (of) of.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var btn = of.querySelector('button[type=submit]'); btn.disabled = true;
+      var ins = await sb.from('offers').insert({
+        request_id: req.id, driver_id: me.id, price: Number($('#oPrice').value),
+        depart_time: $('#oTime').value, car: $('#oCar').value.trim(), comment: $('#oComment').value.trim()
+      });
+      if (ins.error) { $('#oMsg').innerHTML = errorBox(ins.error); btn.disabled = false; return; }
+      toast(t('offer_sent')); renderRequest(req.id);
+    });
+    var wd = $('#withdraw');
+    if (wd) wd.addEventListener('click', async function () {
+      wd.disabled = true;
+      var up = await sb.from('offers').update({ status: 'withdrawn' }).eq('id', my.id);
+      if (up.error) { toast(up.error.message); wd.disabled = false; return; }
+      toast(t('withdrawn_t')); renderRequest(req.id);
+    });
+  }
+
+  async function renderFeed(q) {
+    setTab('requests');
+    loading();
+    var region = q.from || '*';
+    var query = sb.from('ride_requests').select('*').eq('status', 'open').gte('ride_date', isoDate()).order('ride_date').limit(100);
+    if (region !== '*') query = query.eq('from_region', region);
+    var res = await Promise.all([query, sb.from('offers').select('request_id').eq('driver_id', me.id)]);
+    var offered = {};
+    (res[1].data || []).forEach(function (x) { offered[x.request_id] = true; });
+    var html = '<h1>' + esc(t('feed_title')) + '</h1>' + blockedBanner() +
+      '<div class="card form"><div class="f"><div class="grow"><label for="fFrom">' + esc(t('from')) + '</label><select id="fFrom">' +
+      '<option value="*">' + esc(t('any_region')) + '</option>' + regionOptions(region) + '</select></div></div></div>';
+    if (res[0].error) html += errorBox(res[0].error);
+    var list = (res[0].data || []).filter(function (r) { return r.passenger_id !== me.id; });
+    html += list.length ? list.map(function (r) {
+      return requestCard(r, offered[r.id] ? '<span class="tag pending">' + esc(t('of_pending')) + '</span>' : '');
+    }).join('') : '<div class="card empty">' + esc(t('feed_empty')) + '</div>';
+    view.innerHTML = html;
+    $('#fFrom').addEventListener('change', function () { location.hash = '#/requests?' + qs({ from: this.value }); });
   }
 
   // ---------- мастер-аккаунт ----------
@@ -603,6 +820,8 @@
         case 'mine': await renderMine(); break;
         case 'profile': renderProfile(); break;
         case 'admin': await renderAdmin(); break;
+        case 'requests': await renderFeed(q); break;
+        case 'request': if (parts[1] === 'new') renderRequestNew(q); else await renderRequest(parts[1]); break;
         default: renderSearch();
       }
     } catch (e) {

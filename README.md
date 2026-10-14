@@ -8,6 +8,7 @@
 
 ## Что умеет
 
+- Пассажир оставляет заявку, водители присылают цену и время, пассажир выбирает, с кем ехать
 - Два языка: узбекский и русский (переключатель на экране входа и в профиле)
 - При регистрации выбор: водитель или пассажир (роль можно сменить в профиле)
 - Мастер-аккаунт: статистика, все пользователи и поездки, блокировка, отмена поездок
@@ -23,7 +24,7 @@
 ### 1. Supabase: создать базу
 
 1. supabase.com → **New project** → имя `yolda`, регион Frankfurt (или ближайший).
-2. Откройте **SQL Editor → New query** и выполните по очереди [`supabase/001_schema.sql`](supabase/001_schema.sql) и [`supabase/002_roles_admin.sql`](supabase/002_roles_admin.sql). В конце второго файла — строка, которая делает ваш аккаунт мастер-аккаунтом.
+2. Откройте **SQL Editor → New query** и выполните по очереди [`supabase/001_schema.sql`](supabase/001_schema.sql) [`supabase/002_roles_admin.sql`](supabase/002_roles_admin.sql) и [`supabase/003_requests_offers.sql`](supabase/003_requests_offers.sql). В конце второго файла — строка, которая делает ваш аккаунт мастер-аккаунтом.
 3. Для тестов отключите подтверждение email: **Authentication → Sign In / Providers → Email → Confirm email** — выключить. Иначе после регистрации нужно подтверждать почту.
 
 ### 2. Вставить ключи
@@ -65,6 +66,7 @@ window.YOLDA_CONFIG = {
 | `i18n.js` | Переводы: узбекский и русский |
 | `supabase/001_schema.sql` | Таблицы, права доступа, автопересчёт мест |
 | `supabase/002_roles_admin.sql` | Роли, мастер-аккаунт, блокировка |
+| `supabase/003_requests_offers.sql` | Заявки пассажиров и предложения водителей |
 | `manifest.webmanifest`, `sw.js`, `icon*` | Установка на телефон |
 
 ## Что дальше

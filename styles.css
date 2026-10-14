@@ -90,3 +90,4 @@ svg{flex-shrink:0}
 .stat .num{font-size:22px;font-weight:700}
 .stat .small{line-height:1.25}
 @media (min-width:600px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.card.chosen{outline:2px solid var(--accent)}
