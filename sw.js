@@ -1,6 +1,6 @@
 // Простой service worker: кэширует оболочку приложения, данные всегда берутся из сети.
-var CACHE = 'yolda-v2';
-var SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'districts.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'];
+var CACHE = 'yolda-v3';
+var SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'districts.js', 'i18n.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'];
 
 self.addEventListener('install', function (e) {
   e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); }));

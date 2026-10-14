@@ -78,3 +78,15 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion: reduce){.spinner{animation-duration:2s}}
 svg{flex-shrink:0}
+.langs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;background:var(--card);padding:4px;border-radius:14px}
+.langs button{height:40px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:600 14px var(--font);cursor:pointer}
+.langs button.on{background:var(--accent-soft);color:var(--fg)}
+.roles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.role{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:14px;color:var(--fg);font-family:var(--font);cursor:pointer;min-width:0}
+.role svg{color:var(--accent)}
+.role.on{border:2px solid var(--accent);background:var(--accent-soft)}
+.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.stat{background:var(--card);border-radius:14px;padding:12px 10px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.stat .num{font-size:22px;font-weight:700}
+.stat .small{line-height:1.25}
+@media (min-width:600px){.stats{grid-template-columns:repeat(4,minmax(0,1fr))}}
