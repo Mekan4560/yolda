@@ -129,8 +129,85 @@
     if (!user) { me = null; return; }
     var p = await sb.rpc('me');
     var row = (p.data && p.data[0]) || {};
-    me = { id: user.id, email: user.email, name: row.name || '', phone: row.phone || '', role: row.role || 'passenger', is_admin: !!row.is_admin, blocked: !!row.blocked };
+    me = { id: user.id, email: user.email, name: row.name || '', phone: row.phone || '', role: row.role || 'passenger', is_admin: !!row.is_admin, blocked: !!row.blocked, drv: null };
+    await loadDriver();
   }
+
+  // ---------- водитель: автомобиль и проверка ----------
+  var CAR_MAKES = ['Chevrolet', 'Daewoo', 'Ravon', 'Kia', 'Hyundai', 'Toyota', 'BYD', 'Chery', 'Haval', 'Lada', 'Nissan', 'Volkswagen', 'Mercedes-Benz', 'Lexus'];
+  var CAR_COLORS = ['white', 'black', 'silver', 'gray', 'blue', 'red', 'green', 'beige', 'brown', 'yellow', 'other'];
+  async function loadDriver() {
+    if (!me || me.is_admin || me.role !== 'driver') { if (me) me.drv = null; return; }
+    var r = await sb.rpc('my_driver');
+    var d = (r.data && r.data[0]) || {};
+    me.drv = { make: d.car_make || '', model: d.car_model || '', color: d.car_color || '', year: d.car_year || '',
+               number: d.car_number || '', status: d.driver_status || 'none', note: d.driver_note || '' };
+  }
+  function colorName(c) { return c && CAR_COLORS.indexOf(c) > -1 ? t('color_' + c) : (c || ''); }
+  function carText(d) {
+    if (!d || !d.make) return '';
+    return (d.make + ' ' + d.model).trim() + (d.color ? ', ' + colorName(d.color) : '');
+  }
+  function driverReady() { return !!(me && me.drv && me.drv.status === 'approved' && !me.blocked); }
+  function needCar() { return !!(me && !me.is_admin && me.role === 'driver' && me.drv && !me.drv.make); }
+  function statusTag(st) {
+    var cls = st === 'approved' ? '' : st === 'rejected' ? ' cancelled' : ' pending';
+    return '<span class="tag' + cls + '">' + esc(t('ds_' + st)) + '</span>';
+  }
+  // Карточка-подсказка, пока водитель не одобрен
+  function driverGate() {
+    var d = me.drv || { status: 'none' };
+    if (!d.make) {
+      return '<div class="card pad gate"><span class="t">' + esc(t('gate_car_title')) + '</span><span class="small muted">' + esc(t('gate_car_text')) + '</span>' +
+        '<a class="btn sm" href="#/car">' + esc(t('add_car')) + '</a></div>';
+    }
+    if (d.status === 'rejected') {
+      return '<div class="card pad gate bad"><span class="t">' + esc(t('gate_rejected_title')) + '</span>' +
+        (d.note ? '<span class="small">' + esc(t('reason')) + ': ' + esc(d.note) + '</span>' : '') +
+        '<a class="btn sm" href="#/car">' + esc(t('fix_car')) + '</a></div>';
+    }
+    return '<div class="card pad gate"><span class="t">' + esc(t('gate_pending_title')) + '</span><span class="small muted">' + esc(t('gate_pending_text')) + '</span>' +
+      '<span class="small">' + esc(carText(d)) + ' · <b class="plate">' + esc(d.number) + '</b></span></div>';
+  }
+  function myCarCard() {
+    var d = me.drv || {};
+    if (!d.make) return '<div class="card pad"><span class="small muted">' + esc(t('gate_car_text')) + '</span><a class="btn sm" href="#/car">' + esc(t('add_car')) + '</a></div>';
+    return '<div class="card pad"><div class="row between"><span class="t">' + esc(carText(d)) + (d.year ? ' · ' + esc(d.year) : '') + '</span>' + statusTag(d.status) + '</div>' +
+      '<span class="plate big">' + esc(d.number) + '</span>' +
+      (d.status === 'rejected' && d.note ? '<span class="small">' + esc(t('reason')) + ': ' + esc(d.note) + '</span>' : '') +
+      '<a class="btn sec sm" href="#/car">' + esc(t('edit_car')) + '</a></div>';
+  }
+
+  function renderCar() {
+    setTab(isDriver() ? 'profile' : 'profile');
+    if (!isDriver() || me.is_admin) { location.hash = '#/profile'; return; }
+    var d = me.drv || {};
+    var thisYear = new Date().getFullYear();
+    view.innerHTML = '<div class="row">' + back('#/profile') + '<h1>' + esc(t('my_car')) + '</h1></div>' +
+      (d.make ? '<div class="row between card pad" style="flex-direction:row"><span class="small">' + esc(t('check_status')) + '</span>' + statusTag(d.status) + '</div>' : '') +
+      '<div class="info">' + esc(t('car_hint')) + '</div>' +
+      '<form class="card form" id="carForm">' +
+      '<div class="f"><div class="grow two"><div><label for="cMake">' + esc(t('car_make')) + '</label><input id="cMake" list="makes" required maxlength="40" value="' + esc(d.make) + '" placeholder="Chevrolet">' +
+      '<datalist id="makes">' + CAR_MAKES.map(function (m) { return '<option value="' + esc(m) + '">'; }).join('') + '</datalist></div>' +
+      '<div><label for="cModel">' + esc(t('car_model')) + '</label><input id="cModel" required maxlength="40" value="' + esc(d.model) + '" placeholder="Cobalt"></div></div></div>' +
+      '<div class="f"><div class="grow two"><div><label for="cColor">' + esc(t('car_color')) + '</label><select id="cColor">' +
+      CAR_COLORS.map(function (c) { return '<option value="' + c + '"' + (c === d.color ? ' selected' : '') + '>' + esc(t('color_' + c)) + '</option>'; }).join('') + '</select></div>' +
+      '<div><label for="cYear">' + esc(t('car_year')) + '</label><input id="cYear" type="number" inputmode="numeric" min="1970" max="' + (thisYear + 1) + '" value="' + esc(d.year) + '" placeholder="2021"></div></div></div>' +
+      '<div class="f"><div class="grow"><label for="cNumber">' + esc(t('car_number')) + '</label><input id="cNumber" required maxlength="20" class="plate-input" value="' + esc(d.number) + '" placeholder="01 A 123 BC" autocapitalize="characters"></div></div>' +
+      '<div id="carMsg"></div><button class="btn" type="submit">' + esc(d.make ? t('save_car') : t('send_check')) + '</button></form>';
+    $('#cNumber').addEventListener('input', function () { var p = this.selectionStart; this.value = this.value.toUpperCase(); this.setSelectionRange(p, p); });
+    $('#carForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var btn = this.querySelector('button[type=submit]'); btn.disabled = true;
+      var y = $('#cYear').value ? Number($('#cYear').value) : null;
+      var r = await sb.rpc('submit_driver_car', { p_make: $('#cMake').value, p_model: $('#cModel').value, p_color: $('#cColor').value, p_year: y, p_number: $('#cNumber').value });
+      if (r.error) { $('#carMsg').innerHTML = errorBox(r.error); btn.disabled = false; return; }
+      await loadDriver();
+      toast(r.data === 'approved' ? t('saved') : t('sent_check'));
+      location.hash = r.data === 'approved' ? '#/requests' : '#/profile';
+    });
+  }
+
 
   function renderLogin() {
     setTab(null);
@@ -188,7 +265,7 @@
         }
         await loadMe();
         renderLogin.mode = 'in';
-        location.hash = homeHash();
+        location.hash = needCar() ? '#/car' : homeHash();
       } catch (err) {
         msg.innerHTML = errorBox(err.message === 'Invalid login credentials' ? { message: t('bad_login') } : err);
         btn.disabled = false;
@@ -291,10 +368,23 @@
   async function loadRatings(ids) {
     var need = ids.filter(function (id, i) { return id && ids.indexOf(id) === i && !ratingCache[id]; });
     if (!need.length) return;
-    var r = await sb.rpc('driver_ratings', { p_ids: need });
-    (r.data || []).forEach(function (x) { ratingCache[x.driver_id] = { a: Number(x.avg_rating), n: Number(x.reviews_count) }; });
-    need.forEach(function (id) { if (!ratingCache[id]) ratingCache[id] = { a: 0, n: 0 }; });
+    var r = await sb.rpc('driver_cards', { p_ids: need });
+    (r.data || []).forEach(function (x) {
+      var car = x.car || '', ci = car.lastIndexOf(', ');
+      if (ci > -1) car = car.slice(0, ci + 2) + colorName(car.slice(ci + 2));
+      ratingCache[x.driver_id] = { a: Number(x.avg_rating || 0), n: Number(x.reviews_count || 0), rides: Number(x.rides_done || 0), verified: !!x.verified, car: car };
+    });
+    need.forEach(function (id) { if (!ratingCache[id]) ratingCache[id] = { a: 0, n: 0, rides: 0, verified: false, car: '' }; });
   }
+  // Как в inDrive: «Супер-водитель» — высокий рейтинг и много поездок
+  function isSuper(c) { return c && c.n >= 5 && c.a >= 4.8 && c.rides >= 10; }
+  function badges(id) {
+    var c = ratingCache[id]; if (!c) return '';
+    return (isSuper(c) ? '<span class="badge super">' + esc(t('super_driver')) + '</span>' : '') +
+      (c.verified ? '<span class="badge ok">✓ ' + esc(t('verified')) + '</span>' : '');
+  }
+  function cardCar(id, fallback) { var c = ratingCache[id]; return (c && c.car) || fallback || ''; }
+  function ridesText(id) { var c = ratingCache[id]; return c && c.rides ? ' · ' + esc(t('rides_n', { n: c.rides })) : ''; }
   function ratingText(id) {
     var r = ratingCache[id];
     if (!r || !r.n) return esc(t('new_driver'));
@@ -310,9 +400,9 @@
       '<div class="times"><span class="time num">' + hm(x.depart_at) + '</span><span class="line"></span><span class="small muted">' + esc(dayLabel(x.depart_at)) + '</span></div>' +
       '<div class="row between small"><span>' + place(x.from_region, x.from_district) + '</span><span style="text-align:right">' + place(x.to_region, x.to_district) + '</span></div>' +
       '<div class="row"><span class="ava">' + initials(name) + '</span>' +
-      '<div class="grow"><span class="t">' + esc(name) + ' ' + ratingSpan(x.driver_id) + '</span><span class="small muted">' + esc(x.car || '') + '</span></div>' +
+      '<div class="grow"><span class="t">' + esc(name) + ' ' + ratingSpan(x.driver_id) + '</span><span class="small muted">' + esc(cardCar(x.driver_id, x.car)) + '</span></div>' +
       '<span class="price num">' + money(x.price) + '</span></div>' +
-      '<div class="row wrap" style="gap:8px">' + (me && x.driver_id === me.id ? '<span class="tag pending">' + esc(t('own_trip')) + '</span>' : '') +
+      '<div class="row wrap" style="gap:8px">' + badges(x.driver_id) + (me && x.driver_id === me.id ? '<span class="tag pending">' + esc(t('own_trip')) + '</span>' : '') +
       '<span class="tag">' + esc(t('seats_free', { n: x.seats_free })) + '</span>' +
       (x.options || []).map(function (o) { return '<span class="tag">' + esc(optLabel(o)) + '</span>'; }).join('') + '</div></a>';
   }
@@ -328,7 +418,7 @@
     var b = await sb.from('bookings').select('*').eq('trip_id', id).eq('passenger_id', me.id).maybeSingle();
     var booking = b.data;
     var name = (x.driver && x.driver.name) || t('driver');
-    var driverPhone = '', myReview = null;
+    var driverPhone = '', driverPlate = '', myReview = null;
     await loadRatings([x.driver_id]);
     if (booking && booking.status === 'accepted') {
       var rv = await sb.from('reviews').select('*').eq('author_id', me.id).eq('trip_id', Number(id)).maybeSingle();
@@ -336,6 +426,8 @@
       var c = await sb.rpc('trip_contacts', { p_trip: Number(id) });
       var d = (c.data || []).filter(function (y) { return y.user_id === x.driver_id; })[0];
       driverPhone = d ? d.phone : '';
+      var pl = await sb.rpc('driver_plate', { p_driver: x.driver_id });
+      driverPlate = pl.data || '';
     }
 
     var html = '<div class="row">' + back('javascript:history.back()') + '<h1>' + esc(t('trip_details')) + '</h1></div>' + blockedBanner() +
@@ -345,8 +437,10 @@
       '<div class="stop" style="min-height:0"><span class="small muted">' + esc(dayLabel(x.depart_at)) + '</span><div class="rail"><span class="dot" style="background:var(--accent)"></span></div>' +
       '<div><div class="t">' + esc(x.to_district) + '</div><div class="small muted">' + esc(x.to_region) + '</div></div></div></div>' +
       '<div class="card pad"><div class="row"><span class="ava">' + initials(name) + '</span><div class="grow"><span class="t">' + esc(name) + '</span>' +
-      '<span class="small muted">' + esc(x.car || '') + '</span></div>' + ratingLink(x.driver_id) + '</div>' +
-      (driverPhone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(driverPhone) + '</b></div>' : '') +
+      '<span class="small muted">' + esc(cardCar(x.driver_id, x.car)) + ridesText(x.driver_id) + '</span></div>' + ratingLink(x.driver_id) + '</div>' +
+      (badges(x.driver_id) ? '<div class="row wrap" style="gap:8px">' + badges(x.driver_id) + '</div>' : '') +
+      (driverPhone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(driverPhone) + '</b>' +
+        (driverPlate ? '<br>' + esc(t('car_number')) + ': <b class="plate">' + esc(driverPlate) + '</b>' : '') + '</div>' : '') +
       ((x.options || []).length ? '<div class="row wrap" style="gap:8px">' + x.options.map(function (o) { return '<span class="tag">' + esc(optLabel(o)) + '</span>'; }).join('') + '</div>' : '') +
       '</div>';
 
@@ -399,6 +493,7 @@
       return;
     }
     if (me.blocked) { view.innerHTML = '<h1>' + esc(t('add_title')) + '</h1>' + blockedBanner(); return; }
+    if (!driverReady()) { view.innerHTML = '<h1>' + esc(t('add_title')) + '</h1>' + driverGate(); return; }
     var chosen = {};
     view.innerHTML = '<h1>' + esc(t('add_title')) + '</h1>' +
       '<form class="card form" id="addForm">' +
@@ -409,7 +504,7 @@
       '<div class="f"><div class="grow two"><div><label for="tDate">' + esc(t('date')) + '</label><input id="tDate" type="date" required min="' + isoDate() + '" value="' + tomorrow() + '"></div>' +
       '<div><label for="tTime">' + esc(t('depart_time')) + '</label><input id="tTime" type="time" required value="07:00"></div></div></div>' +
       '<div class="f"><div class="grow"><label for="tMeet">' + esc(t('meet')) + '</label><input id="tMeet" placeholder="' + esc(t('meet_ph')) + '"></div></div>' +
-      '<div class="f"><div class="grow"><label for="tCar">' + esc(t('car')) + '</label><input id="tCar" required placeholder="' + esc(t('car_ph')) + '"></div></div>' +
+      '<div class="f"><div class="grow"><label for="tCar">' + esc(t('car')) + '</label><input id="tCar" required value="' + esc(carText(me.drv)) + '" placeholder="' + esc(t('car_ph')) + '"></div></div>' +
       '<div class="f"><div class="grow two"><div><label for="tSeats">' + esc(t('seats_lbl')) + '</label><select id="tSeats"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>' +
       '<div><label for="tPrice">' + esc(t('price_lbl')) + '</label><input id="tPrice" type="number" inputmode="numeric" min="0" step="1000" required placeholder="' + esc(t('price_ph')) + '"></div></div></div>' +
       '<div class="f" style="flex-direction:column;align-items:stretch;gap:10px"><span class="lbl">' + esc(t('options')) + '</span><div class="chips">' +
@@ -565,7 +660,8 @@
     view.innerHTML = '<h1>' + esc(t('profile')) + '</h1>' + blockedBanner() +
       '<span class="section-label">' + esc(t('language')) + '</span>' + langSwitch() +
       (me.is_admin ? '<div class="info">' + esc(t('admin_badge')) + '</div>' :
-        '<span class="section-label">' + esc(t('role')) + '</span><div class="roles">' + roleCard('passenger', me.role) + roleCard('driver', me.role) + '</div>') +
+        '<span class="section-label">' + esc(t('role')) + '</span><div class="roles">' + roleCard('passenger', me.role) + roleCard('driver', me.role) + '</div>' +
+        (isDriver() ? '<span class="section-label">' + esc(t('my_car')) + '</span>' + myCarCard() : '')) +
       '<form class="card form" id="pForm">' +
       '<div class="f"><div class="grow"><label for="pName">' + esc(t('name')) + '</label><input id="pName" required value="' + esc(me.name) + '"></div></div>' +
       '<div class="f"><div class="grow"><label for="pPhone">' + esc(t('phone')) + '</label><input id="pPhone" type="tel" required value="' + esc(me.phone) + '"></div></div>' +
@@ -583,7 +679,8 @@
         if (role === me.role) return;
         var up = await sb.from('profiles').update({ role: role }).eq('id', me.id);
         if (up.error) { toast(up.error.message); return; }
-        me.role = role; toast(t('role_changed')); renderProfile();
+        await loadMe(); toast(t('role_changed'));
+        if (needCar()) location.hash = '#/car'; else renderProfile();
       });
     });
     $('#pForm').addEventListener('submit', async function (e) {
@@ -802,10 +899,11 @@
     var o = await sb.from('offers').select('*, driver:profiles(name)').eq('request_id', req.id).order('price');
     var offers = (o.data || []).filter(function (x) { return x.status !== 'withdrawn'; });
     await loadRatings(offers.map(function (x) { return x.driver_id; }));
-    var phone = '', chosenOffer = offers.filter(function (x) { return x.status === 'accepted'; })[0], myReview = null;
+    var phone = '', plate = '', chosenOffer = offers.filter(function (x) { return x.status === 'accepted'; })[0], myReview = null;
     if (req.status === 'closed') {
       var c = await sb.rpc('request_contacts', { p_request: Number(req.id) });
       phone = (c.data && c.data[0] && c.data[0].phone) || '';
+      if (chosenOffer) { var pl = await sb.rpc('driver_plate', { p_driver: chosenOffer.driver_id }); plate = pl.data || ''; }
       var rv = await sb.from('reviews').select('*').eq('author_id', me.id).eq('request_id', Number(req.id)).maybeSingle();
       myReview = rv.data || null;
     }
@@ -815,10 +913,11 @@
       var n = (x.driver && x.driver.name) || t('driver');
       var chosen = x.status === 'accepted';
       return '<div class="card pad' + (chosen ? ' chosen' : '') + '"><div class="row"><span class="ava">' + initials(n) + '</span>' +
-        '<div class="grow"><span class="t">' + esc(n) + ' ' + ratingLink(x.driver_id) + '</span><span class="small muted">' + esc(x.car) + ' · ' + esc(x.depart_time) + '</span></div>' +
+        '<div class="grow"><span class="t">' + esc(n) + ' ' + ratingLink(x.driver_id) + '</span><span class="small muted">' + esc(cardCar(x.driver_id, x.car)) + ' · ' + esc(x.depart_time) + ridesText(x.driver_id) + '</span></div>' +
         '<span class="price num">' + money(x.price) + '</span></div>' +
+        (badges(x.driver_id) ? '<div class="row wrap" style="gap:8px">' + badges(x.driver_id) + '</div>' : '') +
         (x.comment ? '<span class="small muted">' + esc(x.comment) + '</span>' : '') +
-        (chosen ? '<span class="tag" style="align-self:flex-start">' + esc(t('rq_closed')) + '</span>' + (phone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(phone) + '</b></div>' : '') : '') +
+        (chosen ? '<span class="tag" style="align-self:flex-start">' + esc(t('rq_closed')) + '</span>' + (phone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(phone) + '</b>' + (plate ? '<br>' + esc(t('car_number')) + ': <b class="plate">' + esc(plate) + '</b>' : '') + '</div>' : '') : '') +
         (req.status === 'open' && x.status === 'pending' && !me.blocked ? '<button class="btn sm" data-choose="' + x.id + '">' + esc(t('choose')) + '</button>' : '') +
         '</div>';
     }).join('');
@@ -865,9 +964,11 @@
       html += '<div class="card empty">' + esc(t('req_closed_note')) + '</div>';
     } else if (!isDriver()) {
       html += '<div class="card empty">' + esc(t('driver_needed')) + '</div><a class="btn sec" href="#/profile">' + esc(t('to_profile')) + '</a>';
+    } else if (!me.blocked && !driverReady()) {
+      html += driverGate();
     } else if (!me.blocked) {
       var defTime = { morning: '07:00', day: '12:00', evening: '18:00', any: '09:00' }[req.time_pref];
-      var lastCar = ''; try { lastCar = localStorage.getItem('yolda-car') || ''; } catch (e) {}
+      var lastCar = carText(me.drv); if (!lastCar) { try { lastCar = localStorage.getItem('yolda-car') || ''; } catch (e) {} }
       html += '<form class="card form" id="oForm">' +
         '<div class="f"><div class="grow"><label for="oCar">' + esc(t('car')) + '</label><input id="oCar" required maxlength="80" value="' + esc(lastCar) + '" placeholder="' + esc(t('car_ph')) + '"></div></div>' +
         '<div class="f"><div class="grow"><label for="oTime">' + esc(t('depart_time')) + '</label><input id="oTime" type="time" required value="' + defTime + '"></div></div>' +
@@ -922,7 +1023,7 @@
     var res = await Promise.all([query, sb.from('offers').select('request_id').eq('driver_id', me.id)]);
     var offered = {};
     (res[1].data || []).forEach(function (x) { offered[x.request_id] = true; });
-    var html = '<h1>' + esc(t('feed_title')) + '</h1>' + blockedBanner() +
+    var html = '<h1>' + esc(t('feed_title')) + '</h1>' + blockedBanner() + (me.blocked || driverReady() ? '' : driverGate()) +
       '<div class="card form"><div class="f"><div class="grow"><label for="fFrom">' + esc(t('from')) + '</label><select id="fFrom">' +
       '<option value="*">' + esc(t('any_region')) + '</option>' + regionOptions(region) + '</select></div></div></div>';
     if (res[0].error) html += errorBox(res[0].error);
@@ -951,13 +1052,74 @@
     });
   }
 
+  // ---------- админ: водители и машины ----------
+  function adminDriversHtml(rows) {
+    var f = renderAdmin.dfilter || 'all';
+    var cnt = { all: rows.length, pending: 0, approved: 0, rejected: 0 };
+    rows.forEach(function (d) { if (cnt[d.driver_status] != null) cnt[d.driver_status]++; });
+    var html = '<div class="chips">' + ['all', 'pending', 'approved', 'rejected'].map(function (k) {
+      return '<button type="button" class="chip' + (f === k ? ' on' : '') + '" data-dfilter="' + k + '">' +
+        esc(k === 'all' ? t('all') : t('ds_' + k)) + ' · ' + cnt[k] + '</button>';
+    }).join('') + '</div>';
+    var list = rows.filter(function (d) { return f === 'all' || d.driver_status === f; });
+    if (!list.length) return html + '<div class="card empty">—</div>';
+    return html + list.map(function (d) {
+      var car = d.car_make ? (d.car_make + ' ' + d.car_model).trim() + (d.car_color ? ', ' + colorName(d.car_color) : '') + (d.car_year ? ' · ' + d.car_year : '') : '';
+      var rating = d.reviews ? '★ ' + String(Number(d.avg_rating).toFixed(1)).replace('.', lang === 'ru' ? ',' : '.') + ' (' + d.reviews + ')' : t('new_driver');
+      return '<div class="card pad"><div class="row"><span class="ava">' + initials(d.name) + '</span><div class="grow">' +
+        '<span class="t">' + esc(d.name || '—') + '</span><span class="small muted">' + esc(d.email) + ' · <span class="num">' + esc(d.phone) + '</span></span></div>' +
+        statusTag(d.driver_status === 'none' ? 'none' : d.driver_status) + '</div>' +
+        (car ? '<div class="carbox"><span class="t">' + esc(car) + '</span><span class="plate big">' + esc(d.car_number) + '</span></div>'
+             : '<div class="card empty" style="padding:12px">' + esc(t('no_car_yet')) + '</div>') +
+        (d.cars ? '<span class="small muted">' + esc(t('cars_in_trips')) + ': ' + esc(d.cars) + '</span>' : '') +
+        '<div class="row wrap" style="gap:8px"><span class="tag">' + esc(t('a_trips')) + ': ' + d.trips + '</span><span class="tag">' + esc(t('offers')) + ': ' + d.offers + '</span>' +
+        '<span class="tag">' + esc(t('done_n', { n: d.rides_done })) + '</span><a class="tag" href="#/reviews/' + d.id + '">' + esc(rating) + '</a>' +
+        (d.blocked ? '<span class="tag cancelled">' + esc(t('blocked_badge')) + '</span>' : '') + '</div>' +
+        (d.driver_status === 'rejected' && d.driver_note ? '<span class="small">' + esc(t('reason')) + ': ' + esc(d.driver_note) + '</span>' : '') +
+        '<div class="two">' +
+        (d.driver_status !== 'approved' && d.car_make ? '<button class="btn sm" data-approve="' + d.id + '">' + esc(t('approve')) + '</button>' : '<span></span>') +
+        (d.driver_status !== 'rejected' ? '<button class="btn sec sm" data-reject="' + d.id + '">' + esc(t('reject_driver')) + '</button>' : '<span></span>') + '</div>' +
+        '<form class="reject-form" id="rj-' + d.id + '" hidden><label class="sr" for="rjt-' + d.id + '">' + esc(t('reason')) + '</label>' +
+        '<input id="rjt-' + d.id + '" maxlength="200" placeholder="' + esc(t('reason_ph')) + '"><button class="btn sm danger" type="submit">' + esc(t('reject_driver')) + '</button></form>' +
+        '<button class="btn sec sm" data-block="' + d.id + '" data-val="' + (!d.blocked) + '">' + esc(d.blocked ? t('unblock') : t('block')) + '</button>' +
+        '</div>';
+    }).join('');
+  }
+  function bindAdminDrivers() {
+    $all('[data-dfilter]').forEach(function (b) { b.addEventListener('click', function () { renderAdmin.dfilter = b.getAttribute('data-dfilter'); renderAdmin('drivers'); }); });
+    $all('[data-approve]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        b.disabled = true;
+        var r = await sb.rpc('admin_set_driver_status', { p_user: b.getAttribute('data-approve'), p_status: 'approved', p_note: '' });
+        if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
+        toast(t('approved_t')); renderAdmin('drivers');
+      });
+    });
+    $all('[data-reject]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-reject'), f = document.getElementById('rj-' + id);
+        f.hidden = !f.hidden; if (!f.hidden) document.getElementById('rjt-' + id).focus();
+      });
+    });
+    $all('.reject-form').forEach(function (f) {
+      f.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var id = f.id.slice(3), btn = f.querySelector('button'); btn.disabled = true;
+        var r = await sb.rpc('admin_set_driver_status', { p_user: id, p_status: 'rejected', p_note: document.getElementById('rjt-' + id).value.trim() });
+        if (r.error) { toast(adminError(r.error)); btn.disabled = false; return; }
+        toast(t('rejected_t')); renderAdmin('drivers');
+      });
+    });
+  }
+
+
   async function renderAdmin(tab) {
     setTab('admin');
     if (!me.is_admin) { location.hash = homeHash(); return; }
     tab = tab || renderAdmin.tab || 'users';
     renderAdmin.tab = tab;
     loading();
-    var listCall = tab === 'users' ? sb.rpc('admin_users') : tab === 'trips' ? sb.rpc('admin_trips') : sb.rpc('admin_requests');
+    var listCall = tab === 'users' ? sb.rpc('admin_users') : tab === 'drivers' ? sb.rpc('admin_drivers') : tab === 'trips' ? sb.rpc('admin_trips') : sb.rpc('admin_requests');
     var res = await Promise.all([sb.rpc('admin_stats'), listCall]);
     if (res[0].error || res[1].error) { view.innerHTML = '<h1>' + esc(t('admin_title')) + '</h1>' + errorBox(res[0].error || res[1].error); return; }
     var s = res[0].data[0] || {};
@@ -965,13 +1127,15 @@
     var html = '<h1>' + esc(t('admin_title')) + '</h1>' +
       '<div class="stats">' + stat('s_users', s.users) + stat('s_drivers', s.drivers) + stat('s_passengers', s.passengers) + stat('s_blocked', s.blocked) +
       stat('s_trips_open', s.trips_open) + stat('s_trips_total', s.trips_total) + stat('s_bookings', s.bookings_total) + stat('s_accepted', s.bookings_accepted) + '</div>' +
-      '<div class="seg seg3">' +
-      ['users', 'trips', 'requests'].map(function (k) {
+      '<div class="seg seg4">' +
+      ['users', 'drivers', 'trips', 'requests'].map(function (k) {
         return '<button type="button" data-atab="' + k + '" class="' + (tab === k ? 'on' : '') + '">' + esc(t('a_' + k)) + '</button>';
       }).join('') + '</div>';
 
     var rows = res[1].data || [];
-    if (tab === 'users') {
+    if (tab === 'drivers') {
+      html += adminDriversHtml(rows);
+    } else if (tab === 'users') {
       html += rows.map(function (u) {
         var self = u.id === me.id;
         return '<div class="card pad"><div class="row"><span class="ava">' + initials(u.name) + '</span><div class="grow">' +
@@ -1010,10 +1174,11 @@
     view.innerHTML = html;
 
     $all('[data-atab]').forEach(function (b) { b.addEventListener('click', function () { renderAdmin(b.getAttribute('data-atab')); }); });
+    if (tab === 'drivers') bindAdminDrivers();
     confirmClick('[data-block]', async function (b) {
       var r = await sb.rpc('admin_set_blocked', { p_user: b.getAttribute('data-block'), p_blocked: b.getAttribute('data-val') === 'true' });
       if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
-      toast(t('saved')); renderAdmin('users');
+      toast(t('saved')); renderAdmin(renderAdmin.tab);
     });
     confirmClick('[data-del-user]', async function (b) {
       var r = await sb.rpc('admin_delete_user', { p_user: b.getAttribute('data-del-user') });
@@ -1068,6 +1233,7 @@
         case 'profile': renderProfile(); break;
         case 'admin': await renderAdmin(); break;
         case 'reviews': await renderReviews(parts[1]); break;
+        case 'car': renderCar(); break;
         case 'requests': await renderFeed(q); break;
         case 'request': if (parts[1] === 'new') renderRequestNew(q); else await renderRequest(parts[1]); break;
         default: renderSearch();
