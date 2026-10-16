@@ -15,6 +15,7 @@
 - Водители как в inDrive/BlaBlaCar: при регистрации указывают машину (марка, модель, цвет, год, госномер), админ проверяет и одобряет; значки «Проверен» и «Супер-водитель»; госномер виден пассажиру только после подтверждения
 - Отзывы и рейтинг водителей (оставляет только пассажир, который реально ехал)
 - Комментарии к заявкам: пассажир и водители могут уточнить детали
+- Уведомления: новая бронь, ответ водителя, отмена рейса, предложение цены, выбор водителя, комментарии, итог проверки машины. Приходят сразу (Supabase Realtime): счётчик на вкладке «События», всплывающее сообщение и системное уведомление на телефоне, пока приложение открыто или недавно свёрнуто
 - Регистрация и вход (пока по email; SMS добавим перед запуском)
 - Поиск поездок по области, району и дате
 - Бронь 1–4 мест, отмена брони
@@ -27,7 +28,7 @@
 ### 1. Supabase: создать базу
 
 1. supabase.com → **New project** → имя `yolda`, регион Frankfurt (или ближайший).
-2. Откройте **SQL Editor → New query** и выполните по очереди [`supabase/001_schema.sql`](supabase/001_schema.sql) [`supabase/002_roles_admin.sql`](supabase/002_roles_admin.sql) [`supabase/003_requests_offers.sql`](supabase/003_requests_offers.sql), [`supabase/004_reviews_comments_admin.sql`](supabase/004_reviews_comments_admin.sql) и [`supabase/005_admin_delete.sql`](supabase/005_admin_delete.sql), [`supabase/006_driver_cars.sql`](supabase/006_driver_cars.sql). В конце второго файла — строка, которая делает ваш аккаунт мастер-аккаунтом.
+2. Откройте **SQL Editor → New query** и выполните по очереди [`supabase/001_schema.sql`](supabase/001_schema.sql) [`supabase/002_roles_admin.sql`](supabase/002_roles_admin.sql) [`supabase/003_requests_offers.sql`](supabase/003_requests_offers.sql), [`supabase/004_reviews_comments_admin.sql`](supabase/004_reviews_comments_admin.sql) и [`supabase/005_admin_delete.sql`](supabase/005_admin_delete.sql), [`supabase/006_driver_cars.sql`](supabase/006_driver_cars.sql), [`supabase/007_notifications.sql`](supabase/007_notifications.sql). В конце второго файла — строка, которая делает ваш аккаунт мастер-аккаунтом.
 3. Для тестов отключите подтверждение email: **Authentication → Sign In / Providers → Email → Confirm email** — выключить. Иначе после регистрации нужно подтверждать почту.
 
 ### 2. Вставить ключи
@@ -73,6 +74,7 @@ window.YOLDA_CONFIG = {
 | `supabase/004_reviews_comments_admin.sql` | Отзывы, комментарии, список заявок для админа |
 | `supabase/005_admin_delete.sql` | Права админа на удаление |
 | `supabase/006_driver_cars.sql` | Автомобиль водителя, проверка водителей, список водителей для админа |
+| `supabase/007_notifications.sql` | Уведомления: таблица, триггеры на события, Realtime |
 | `manifest.webmanifest`, `sw.js`, `icon*` | Установка на телефон |
 
 ## Android-приложение

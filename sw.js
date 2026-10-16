@@ -1,5 +1,5 @@
 // Простой service worker: кэширует оболочку приложения, данные всегда берутся из сети.
-var CACHE = 'yolda-v10';
+var CACHE = 'yolda-v11';
 var SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'districts.js', 'i18n.js', 'icon.svg', 'icon-192.png', 'icon-512.png', 'manifest.webmanifest'];
 
 self.addEventListener('install', function (e) {
@@ -21,4 +21,18 @@ self.addEventListener('fetch', function (e) {
     caches.open(CACHE).then(function (c) { c.put(e.request, copy); });
     return res;
   }).catch(function () { return caches.match(e.request); }));
+});
+
+// Нажатие на уведомление: открыть приложение на нужном экране
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var link = (e.notification.data && e.notification.data.link) || '';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
+    if (list.length) {
+      var c = list[0];
+      c.postMessage({ link: link });
+      return c.focus();
+    }
+    return self.clients.openWindow('./' + link);
+  }));
 });

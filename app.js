@@ -110,15 +110,18 @@
     mine: '<path d="M5 17h14l-1.5-6.5A2 2 0 0 0 15.6 9H8.4a2 2 0 0 0-1.9 1.5z"/><circle cx="8" cy="18" r="2"/><circle cx="16" cy="18" r="2"/>',
     profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>',
     admin: '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
-    requests: '<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>'
+    requests: '<path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/>',
+    notifs: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>'
   };
   function setTab(name) {
+    setTab.cur = name;
     if (!me) { tabs.hidden = true; return; }
-    var list = me.is_admin ? ['admin', 'profile'] : isDriver() ? ['requests', 'mine', 'add', 'profile'] : ['search', 'mine', 'profile'];
+    var list = me.is_admin ? ['admin', 'profile'] : isDriver() ? ['requests', 'mine', 'add', 'notifs', 'profile'] : ['search', 'mine', 'notifs', 'profile'];
     tabs.hidden = false;
     tabs.innerHTML = '<div class="tabs-in" style="grid-template-columns:repeat(' + list.length + ',minmax(0,1fr))">' +
       list.map(function (k) {
-        return '<a class="tab' + (k === name ? ' on' : '') + '" href="#/' + k + '"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + '</svg>' + esc(t('tab_' + k)) + '</a>';
+        var badge = k === 'notifs' && notif.unread ? '<span class="badge num" aria-label="' + notif.unread + '">' + (notif.unread > 99 ? '99+' : notif.unread) + '</span>' : '';
+        return '<a class="tab' + (k === name ? ' on' : '') + '" href="#/' + k + '"><span class="tab-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + '</svg>' + badge + '</span>' + esc(t('tab_' + k)) + '</a>';
       }).join('') + '</div>';
   }
 
@@ -131,6 +134,122 @@
     var row = (p.data && p.data[0]) || {};
     me = { id: user.id, email: user.email, name: row.name || '', phone: row.phone || '', role: row.role || 'passenger', is_admin: !!row.is_admin, blocked: !!row.blocked, drv: null };
     await loadDriver();
+    startNotifs();
+  }
+
+  // ---------- уведомления ----------
+  // База сама создаёт уведомления (supabase/007_notifications.sql), сюда они приходят через Realtime.
+  var notif = { unread: 0, channel: null, userId: null };
+  function notifRoute(d) {
+    var when = d.at ? dayLabel(d.at) + ' ' + hm(d.at) : d.date ? dateLabel(d.date) : '';
+    return (d.from || '') + ' → ' + (d.to || '') + (when ? ', ' + when : '');
+  }
+  function notifText(n) {
+    var d = n.data || {};
+    return t('n_' + n.kind, { route: notifRoute(d), name: d.name || '', seats: d.seats || '', price: d.price != null ? money(d.price) : '',
+      time: d.time || '', text: d.text || '', note: d.note || '' }).trim();
+  }
+  async function loadUnread() {
+    if (!me || me.is_admin) return;
+    var r = await sb.from('notifications').select('id', { count: 'exact', head: true }).eq('read', false);
+    if (!r.error) { notif.unread = r.count || 0; setTab(setTab.cur); }
+  }
+  function startNotifs() {
+    if (!me || me.is_admin) { stopNotifs(); return; }
+    if (notif.channel && notif.userId === me.id) return;
+    stopNotifs();
+    notif.userId = me.id;
+    notif.channel = sb.channel('notifs-' + me.id)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: 'user_id=eq.' + me.id }, function (p) { onNotif(p.new); })
+      .subscribe();
+    loadUnread();
+  }
+  function stopNotifs() {
+    if (notif.channel) sb.removeChannel(notif.channel);
+    notif.channel = null; notif.userId = null; notif.unread = 0;
+  }
+  function onNotif(n) {
+    if (!me || n.user_id !== me.id) return;
+    var text = notifText(n);
+    if (location.hash === '#/notifs') { renderNotifs(); return; }
+    notif.unread++; setTab(setTab.cur);
+    toast(text);
+    if (document.hidden) showSystemNotif(n, text);
+    // Открыт экран, к которому относится событие, — обновить, если пользователь ничего не печатает
+    var a = document.activeElement;
+    if (location.hash === n.link && !(a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) route();
+  }
+  // Системные уведомления: в APK — плагин Capacitor, в браузере — через service worker
+  function nativeNotif() {
+    var C = window.Capacitor;
+    return C && C.isNativePlatform && C.isNativePlatform() && C.Plugins && C.Plugins.LocalNotifications || null;
+  }
+  async function pushState() {
+    var ln = nativeNotif();
+    if (ln) { try { var p = await ln.checkPermissions(); return p.display === 'granted' ? 'on' : p.display === 'denied' ? 'denied' : 'off'; } catch (e) { return 'none'; } }
+    if (!('Notification' in window)) return 'none';
+    return Notification.permission === 'granted' ? 'on' : Notification.permission === 'denied' ? 'denied' : 'off';
+  }
+  async function enablePush() {
+    var ln = nativeNotif();
+    try {
+      if (ln) await ln.requestPermissions();
+      else if ('Notification' in window) await Notification.requestPermission();
+    } catch (e) {}
+  }
+  function showSystemNotif(n, text) {
+    var ln = nativeNotif();
+    if (ln) {
+      ln.schedule({ notifications: [{ id: n.id % 2147483647, title: 'Yoʻlda', body: text, extra: { link: n.link } }] }).catch(function () {});
+      return;
+    }
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    var opts = { body: text, icon: 'icon-192.png', badge: 'icon-192.png', tag: 'yolda-' + n.id, data: { link: n.link } };
+    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.ready.then(function (reg) { return reg.showNotification('Yoʻlda', opts); }).catch(function () {});
+    } else {
+      try { var w = new Notification('Yoʻlda', opts); w.onclick = function () { window.focus(); location.hash = n.link; }; } catch (e) {}
+    }
+  }
+  function openLink(link) { if (link && link.indexOf('#/') === 0) location.hash = link; }
+
+  async function renderNotifs() {
+    setTab('notifs');
+    if (!view.querySelector('.notif')) loading();
+    var res = await Promise.all([
+      sb.from('notifications').select('*').order('created_at', { ascending: false }).limit(50),
+      pushState()
+    ]);
+    var r = res[0], ps = res[1];
+    if (location.hash !== '#/notifs') return;
+    var rows = r.data || [];
+    var html = '<div class="row between"><h1>' + esc(t('notifs_title')) + '</h1>' +
+      (rows.length ? '<button class="btn sec sm" id="nClear" style="width:auto;padding:0 14px">' + esc(t('clear_all')) + '</button>' : '') + '</div>';
+    if (r.error) html += errorBox(r.error);
+    if (ps === 'off') html += '<button class="btn sec" id="nPush">' + esc(t('push_enable')) + '</button><p class="small muted">' + esc(t('push_note')) + '</p>';
+    else if (ps === 'denied') html += '<div class="info small">' + esc(t('push_denied')) + '</div>';
+    html += rows.length ? rows.map(function (n) {
+      return '<a class="card pad notif' + (n.read ? '' : ' unread') + '" href="' + esc(n.link || '#/notifs') + '">' +
+        '<span>' + esc(notifText(n)) + '</span>' +
+        '<span class="small muted">' + esc(dayLabel(n.created_at)) + ' · ' + hm(n.created_at) + '</span></a>';
+    }).join('') : '<div class="card empty">' + esc(t('no_notifs')) + '</div>';
+    view.innerHTML = html;
+
+    // Экран открыт — всё прочитано (подсветка новых остаётся до ухода с экрана)
+    if (rows.some(function (n) { return !n.read; })) {
+      await sb.from('notifications').update({ read: true }).eq('read', false);
+    }
+    notif.unread = 0; setTab('notifs');
+    var pb = $('#nPush');
+    if (pb) pb.addEventListener('click', async function () { await enablePush(); if ((await pushState()) === 'on') toast(t('push_on')); renderNotifs(); });
+    var cb = $('#nClear');
+    if (cb) cb.addEventListener('click', async function () {
+      if (cb.getAttribute('data-sure') !== '1') { cb.setAttribute('data-sure', '1'); cb.textContent = t('clear_all') + '?'; return; }
+      cb.disabled = true;
+      var d = await sb.from('notifications').delete().eq('user_id', me.id);
+      if (d.error) { toast(d.error.message); cb.disabled = false; return; }
+      renderNotifs();
+    });
   }
 
   // ---------- водитель: автомобиль и проверка ----------
@@ -700,7 +819,7 @@
     });
     $('#logout').addEventListener('click', async function () {
       renderLogin.mode = 'in';
-      await sb.auth.signOut(); me = null; location.hash = '#/login';
+      stopNotifs(); await sb.auth.signOut(); me = null; location.hash = '#/login';
     });
   }
 
@@ -1234,6 +1353,7 @@
         case 'admin': await renderAdmin(); break;
         case 'reviews': await renderReviews(parts[1]); break;
         case 'car': renderCar(); break;
+        case 'notifs': await renderNotifs(); break;
         case 'requests': await renderFeed(q); break;
         case 'request': if (parts[1] === 'new') renderRequestNew(q); else await renderRequest(parts[1]); break;
         default: renderSearch();
@@ -1248,8 +1368,14 @@
     if (sb) {
       await loadMe();
       sb.auth.onAuthStateChange(function (evt) {
-        if (evt === 'SIGNED_OUT') { me = null; location.hash = '#/login'; }
+        if (evt === 'SIGNED_OUT') { stopNotifs(); me = null; location.hash = '#/login'; }
       });
+      // Вернулись в приложение — пересчитать непрочитанные (соединение могло прерваться)
+      document.addEventListener('visibilitychange', function () { if (!document.hidden) loadUnread(); });
+      // Нажатие на системное уведомление открывает нужный экран
+      if (navigator.serviceWorker) navigator.serviceWorker.addEventListener('message', function (e) { if (e.data && e.data.link) openLink(e.data.link); });
+      var ln = nativeNotif();
+      if (ln) ln.addListener('localNotificationActionPerformed', function (a) { openLink(a.notification && a.notification.extra && a.notification.extra.link); });
     }
     route();
   })();
