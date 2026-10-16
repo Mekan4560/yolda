@@ -120,7 +120,7 @@
     tabs.hidden = false;
     tabs.innerHTML = '<div class="tabs-in" style="grid-template-columns:repeat(' + list.length + ',minmax(0,1fr))">' +
       list.map(function (k) {
-        var badge = k === 'notifs' && notif.unread ? '<span class="badge num" aria-label="' + notif.unread + '">' + (notif.unread > 99 ? '99+' : notif.unread) + '</span>' : '';
+        var badge = k === 'notifs' && notif.unread ? '<span class="nbadge num" aria-label="' + notif.unread + '">' + (notif.unread > 99 ? '99+' : notif.unread) + '</span>' : '';
         return '<a class="tab' + (k === name ? ' on' : '') + '" href="#/' + k + '"><span class="tab-ico"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[k] + '</svg>' + badge + '</span>' + esc(t('tab_' + k)) + '</a>';
       }).join('') + '</div>';
   }
@@ -411,7 +411,7 @@
       '<form class="card form" id="sForm">' +
       '<div class="f"><span class="dot o"></span><div class="grow"><label for="sFrom">' + esc(t('from')) + '</label><select id="sFrom">' + regionOptions(last.from) + '</select>' +
       '<label for="sFromD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="sFromD">' + districtOptions(last.from, last.fromD, true) + '</select></div></div>' +
-      '<div class="f"><span class="dot f"></span><div class="grow"><label for="sTo">' + esc(t('to')) + '</label><select id="sTo">' + regionOptions(last.to) + '</select>' +
+      '<div class="f"><span class="dot d"></span><div class="grow"><label for="sTo">' + esc(t('to')) + '</label><select id="sTo">' + regionOptions(last.to) + '</select>' +
       '<label for="sToD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="sToD">' + districtOptions(last.to, last.toD, true) + '</select></div></div>' +
       '<div class="f"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>' +
       '<div class="grow"><label for="sDate">' + esc(t('date')) + '</label><input id="sDate" type="date" min="' + isoDate() + '" value="' + esc(last.date) + '"></div></div>' +
@@ -618,7 +618,7 @@
       '<form class="card form" id="addForm">' +
       '<div class="f"><span class="dot o"></span><div class="grow"><label for="tFrom">' + esc(t('from')) + '</label><select id="tFrom">' + regionOptions('Toshkent shahri') + '</select>' +
       '<label for="tFromD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="tFromD">' + districtOptions('Toshkent shahri') + '</select></div></div>' +
-      '<div class="f"><span class="dot f"></span><div class="grow"><label for="tTo">' + esc(t('to')) + '</label><select id="tTo">' + regionOptions('Samarqand') + '</select>' +
+      '<div class="f"><span class="dot d"></span><div class="grow"><label for="tTo">' + esc(t('to')) + '</label><select id="tTo">' + regionOptions('Samarqand') + '</select>' +
       '<label for="tToD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="tToD">' + districtOptions('Samarqand') + '</select></div></div>' +
       '<div class="f"><div class="grow two"><div><label for="tDate">' + esc(t('date')) + '</label><input id="tDate" type="date" required min="' + isoDate() + '" value="' + tomorrow() + '"></div>' +
       '<div><label for="tTime">' + esc(t('depart_time')) + '</label><input id="tTime" type="time" required value="07:00"></div></div></div>' +
@@ -843,7 +843,7 @@
       '<form class="card form" id="rForm">' +
       '<div class="f"><span class="dot o"></span><div class="grow"><label for="rFrom">' + esc(t('from')) + '</label><select id="rFrom">' + regionOptions(from) + '</select>' +
       '<label for="rFromD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="rFromD">' + districtOptions(from, q.fromD) + '</select></div></div>' +
-      '<div class="f"><span class="dot f"></span><div class="grow"><label for="rTo">' + esc(t('to')) + '</label><select id="rTo">' + regionOptions(to) + '</select>' +
+      '<div class="f"><span class="dot d"></span><div class="grow"><label for="rTo">' + esc(t('to')) + '</label><select id="rTo">' + regionOptions(to) + '</select>' +
       '<label for="rToD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="rToD">' + districtOptions(to, q.toD) + '</select></div></div>' +
       '<div class="f"><div class="grow two"><div><label for="rDate">' + esc(t('date')) + '</label><input id="rDate" type="date" required min="' + isoDate() + '" value="' + esc(q.date || tomorrow()) + '"></div>' +
       '<div><label for="rTime">' + esc(t('time_pref')) + '</label><select id="rTime">' +
