@@ -17,6 +17,13 @@
     { key: 'Faqat ayollar uchun', t: 'opt_women' }
   ];
 
+  // Популярные межгородские направления (быстрый выбор на главном экране)
+  var POPULAR = [
+    ['Toshkent shahri', 'Samarqand'], ['Samarqand', 'Toshkent shahri'], ['Toshkent shahri', 'Buxoro'], ['Toshkent shahri', 'Fargʻona'],
+    ['Toshkent shahri', 'Andijon'], ['Toshkent shahri', 'Namangan'], ['Toshkent shahri', 'Qashqadaryo'], ['Toshkent shahri', 'Xorazm']
+  ];
+  function shortRegion(r) { return String(r).replace(/ (shahri|viloyati)$/, ''); }
+
   // ---------- язык ----------
   var lang = (function () {
     try { var s = localStorage.getItem('yolda-lang'); if (s === 'uz' || s === 'ru') return s; } catch (e) {}
@@ -404,31 +411,53 @@
   // ---------- поиск ----------
   function renderSearch() {
     setTab('search');
-    var last = renderSearch.last || { from: 'Toshkent shahri', fromD: '*', to: 'Samarqand', toD: '*', date: tomorrow() };
+    var last = renderSearch.last || { from: 'Toshkent shahri', fromD: '*', to: 'Samarqand', toD: '*', date: tomorrow(), seats: 1 };
     view.innerHTML = blockedBanner() +
       '<div class="hero"><span class="brand">' + logo('#FFFFFF', '#0B6E79', 28) + 'yoʻlda</span>' +
       '<span class="big">' + esc(t('hello')) + (me.name ? ', ' + esc(me.name) : '') + '! ' + esc(t('where_go')) + '</span></div>' +
       '<form class="card form" id="sForm">' +
       '<div class="f"><span class="dot o"></span><div class="grow"><label for="sFrom">' + esc(t('from')) + '</label><select id="sFrom">' + regionOptions(last.from) + '</select>' +
       '<label for="sFromD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="sFromD">' + districtOptions(last.from, last.fromD, true) + '</select></div></div>' +
+      '<div class="swap-wrap"><button type="button" class="icon-btn swap" id="sSwap" aria-label="' + esc(t('swap')) + '" title="' + esc(t('swap')) + '"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v16M7 4 3 8M7 4l4 4M17 20V4M17 20l-4-4M17 20l4-4"/></svg></button></div>' +
       '<div class="f"><span class="dot d"></span><div class="grow"><label for="sTo">' + esc(t('to')) + '</label><select id="sTo">' + regionOptions(last.to) + '</select>' +
       '<label for="sToD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="sToD">' + districtOptions(last.to, last.toD, true) + '</select></div></div>' +
       '<div class="f"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>' +
-      '<div class="grow"><label for="sDate">' + esc(t('date')) + '</label><input id="sDate" type="date" min="' + isoDate() + '" value="' + esc(last.date) + '"></div></div>' +
+      '<div class="grow two"><div><label for="sDate">' + esc(t('date')) + '</label><input id="sDate" type="date" min="' + isoDate() + '" value="' + esc(last.date) + '"></div>' +
+      '<div><label for="sSeats">' + esc(t('passengers_cnt')) + '</label><select id="sSeats">' + [1, 2, 3, 4].map(function (n) { return '<option value="' + n + '"' + (Number(last.seats || 1) === n ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select></div></div></div>' +
       '<button class="btn" type="submit">' + esc(t('search_btn')) + '</button></form>' +
+      '<span class="section-label">' + esc(t('popular_routes')) + '</span><div class="chips">' +
+      POPULAR.map(function (r, i) { return '<button type="button" class="chip" data-pop="' + i + '">' + esc(shortRegion(r[0])) + ' → ' + esc(shortRegion(r[1])) + '</button>'; }).join('') + '</div>' +
       '<button class="btn sec" type="button" id="toRequest">' + esc(t('req_new_btn')) + '</button>' +
       '<p class="small muted">' + esc(t('req_hint')) + '</p>' +
       '<h2>' + esc(t('upcoming')) + '</h2><div id="upcoming"><div class="spinner"></div></div>';
     bindRegion('sFrom', 'sFromD', true);
     bindRegion('sTo', 'sToD', true);
+    function searchQuery() {
+      return { from: $('#sFrom').value, fromD: $('#sFromD').value, to: $('#sTo').value, toD: $('#sToD').value, date: $('#sDate').value || tomorrow(), seats: $('#sSeats').value };
+    }
     $('#sForm').addEventListener('submit', function (e) {
       e.preventDefault();
-      var q = { from: $('#sFrom').value, fromD: $('#sFromD').value, to: $('#sTo').value, toD: $('#sToD').value, date: $('#sDate').value || tomorrow() };
+      var q = searchQuery();
       renderSearch.last = q;
       location.hash = '#/results?' + qs(q);
     });
+    // Поменять «откуда» и «куда» местами
+    $('#sSwap').addEventListener('click', function () {
+      var q = searchQuery();
+      $('#sFrom').value = q.to; $('#sFromD').innerHTML = districtOptions(q.to, q.toD, true);
+      $('#sTo').value = q.from; $('#sToD').innerHTML = districtOptions(q.from, q.fromD, true);
+    });
+    // Популярный маршрут — сразу к результатам
+    $all('[data-pop]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var r = POPULAR[Number(b.getAttribute('data-pop'))], q = searchQuery();
+        q.from = r[0]; q.to = r[1]; q.fromD = '*'; q.toD = '*';
+        renderSearch.last = q;
+        location.hash = '#/results?' + qs(q);
+      });
+    });
     $('#toRequest').addEventListener('click', function () {
-      var q = { from: $('#sFrom').value, fromD: $('#sFromD').value, to: $('#sTo').value, toD: $('#sToD').value, date: $('#sDate').value || tomorrow() };
+      var q = searchQuery();
       renderSearch.last = q;
       location.hash = '#/request/new?' + qs(q);
     });
@@ -442,6 +471,7 @@
     var box = document.getElementById('upcoming');
     if (!box) return; // экран уже сменился
     if (r.error) { box.innerHTML = errorBox(r.error); return; }
+    tripCard.seats = 1;
     await loadRatings(r.data.map(function (x) { return x.driver_id; }));
     if (!document.getElementById('upcoming')) return;
     box.innerHTML = r.data.length
@@ -453,8 +483,10 @@
     setTab('search');
     loading();
     var start = new Date(q.date + 'T00:00:00'), end = new Date(q.date + 'T23:59:59');
+    var seats = Math.max(1, Number(q.seats) || 1);
+    tripCard.seats = seats;
     var query = sb.from('trips').select('*, driver:profiles(name)')
-      .eq('status', 'open').gt('seats_free', 0)
+      .eq('status', 'open').gte('seats_free', seats)
       .eq('from_region', q.from).eq('to_region', q.to)
       .gte('depart_at', start.toISOString()).lte('depart_at', end.toISOString())
       .order('depart_at');
@@ -462,14 +494,14 @@
     if (q.toD && q.toD !== '*') query = query.eq('to_district', q.toD);
     var r = await query;
     var head = '<div class="row">' + back('#/search') + '<div class="grow"><h1>' + esc(q.from) + ' → ' + esc(q.to) + '</h1>' +
-      '<span class="small muted">' + esc(dayLabel(start)) + ' · ' + esc(t('trips_count', { n: r.data ? r.data.length : 0 })) + '</span></div></div>';
+      '<span class="small muted">' + esc(dayLabel(start)) + (seats > 1 ? ' · ' + esc(t('seats_n', { n: seats })) : '') + ' · ' + esc(t('trips_count', { n: r.data ? r.data.length : 0 })) + '</span></div></div>';
     if (r.error) { view.innerHTML = head + errorBox(r.error); return; }
     var reqBtn = '<a class="btn' + (r.data.length ? ' sec' : '') + '" href="#/request/new?' + qs(q) + '">' + esc(t('req_new_btn')) + '</a>';
     await loadRatings(r.data.map(function (x) { return x.driver_id; }));
     if (r.data.length) { view.innerHTML = head + r.data.map(tripCard).join('') + reqBtn; return; }
     // На эту дату пусто — показываем тот же маршрут на другие дни
     var other = sb.from('trips').select('*, driver:profiles(name)')
-      .eq('status', 'open').gt('seats_free', 0)
+      .eq('status', 'open').gte('seats_free', seats)
       .eq('from_region', q.from).eq('to_region', q.to)
       .gte('depart_at', new Date().toISOString()).order('depart_at').limit(20);
     if (q.fromD && q.fromD !== '*') other = other.eq('from_district', q.fromD);
@@ -513,11 +545,81 @@
   function ratingLink(id) { return '<a class="rating small" href="#/reviews/' + id + '">' + ratingText(id) + '</a>'; }
   function stars(n) { var s = ''; for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆'; return '<span class="stars" aria-label="' + n + '/5">' + s + '</span>'; }
 
+  var PIN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+  function meetList() {
+    return '<datalist id="meetList">' + t('meet_sugg').map(function (m) { return '<option value="' + esc(m) + '">'; }).join('') + '</datalist>';
+  }
+  function telHref(p) { return 'tel:' + String(p || '').replace(/[^\d+]/g, ''); }
+  function smsHref(p) { return 'sms:' + String(p || '').replace(/[^\d+]/g, ''); }
+  function shareText(o) {
+    return t('share_text', { route: o.route, when: o.when, driver: o.driver, car: o.car || '', plate: o.plate ? t('share_plate', { plate: o.plate }) : '', meet: o.meet || t('meet_none') });
+  }
+  // Сводка подтверждённой поездки: кто, машина, маршрут, время, место, сумма; связь и безопасность
+  function confirmedCard(o) {
+    function row(l, v) { return '<div class="sum-row"><span class="muted">' + esc(l) + '</span><span>' + v + '</span></div>'; }
+    return '<div class="card pad confirmed"><span class="t ok-title">✓ ' + esc(t('trip_confirmed')) + '</span><div class="sum">' +
+      row(t(o.who), esc(o.name) + (o.phone ? '<br><span class="num">' + esc(o.phone) + '</span>' : '')) +
+      (o.car ? row(t('car'), esc(o.car) + (o.plate ? '<br><b class="plate">' + esc(o.plate) + '</b>' : '')) : '') +
+      row(t('route_lbl'), esc(o.route)) + row(t('when_lbl'), esc(o.when)) +
+      row(t('meet'), esc(o.meet || t('meet_none'))) +
+      (o.total != null ? row(t('total_pay'), '<b class="num">' + money(o.total) + '</b>' + (o.seats ? '<br><span class="small muted">' + esc(t('seats_n', { n: o.seats })) + '</span>' : '')) : '') +
+      '</div><div class="actions">' +
+      (o.phone ? '<a class="btn sm" href="' + telHref(o.phone) + '">' + esc(t('call')) + '</a><a class="btn sec sm" href="' + smsHref(o.phone) + '">' + esc(t('write')) + '</a>' : '') +
+      (o.share ? '<button type="button" class="btn sec sm" data-share="' + esc(o.share) + '">' + esc(t('share')) + '</button>' : '') +
+      '</div><span class="small muted">' + esc(t('pay_cash')) + '. ' + esc(t('cancel_rule')) + '</span>' +
+      (o.sos ? '<div class="sos"><a class="btn danger sm" href="tel:112">' + esc(t('sos')) + '</a><span class="small muted">' + esc(t('sos_hint')) + '</span></div>' : '') +
+      '</div>';
+  }
+  function bindShare() {
+    $all('[data-share]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        var text = b.getAttribute('data-share');
+        if (navigator.share) {
+          try { await navigator.share({ title: 'Yoʻlda', text: text }); return; } catch (e) { if (e && e.name === 'AbortError') return; }
+        }
+        try { await navigator.clipboard.writeText(text); toast(t('copied')); } catch (e) { toast(text); }
+      });
+    });
+  }
+  // Жалоба на пользователя: кнопка раскрывает форму, жалоба уходит администратору
+  function reportLink(target, ref) {
+    return '<button type="button" class="link-btn" data-report="' + esc(target) + '" data-trip="' + (ref.trip || '') + '" data-req="' + (ref.req || '') + '">' + esc(t('report')) + '</button><div class="report-box" hidden></div>';
+  }
+  function bindReports() {
+    $all('[data-report]').forEach(function (b, i) {
+      b.addEventListener('click', function () {
+        var box = b.nextElementSibling;
+        box.hidden = !box.hidden;
+        if (box.hidden || box.innerHTML) return;
+        box.innerHTML = '<form class="card form">' +
+          '<div class="f"><div class="grow"><label for="rpR' + i + '">' + esc(t('report_reason')) + '</label><select id="rpR' + i + '">' +
+          ['no_show', 'unsafe', 'rude', 'fraud', 'other'].map(function (k) { return '<option value="' + k + '">' + esc(t('rr_' + k)) + '</option>'; }).join('') + '</select></div></div>' +
+          '<div class="f"><div class="grow"><textarea id="rpT' + i + '" rows="3" maxlength="500" placeholder="' + esc(t('report_ph')) + '"></textarea></div></div>' +
+          '<button class="btn sm danger" type="submit">' + esc(t('report_send')) + '</button></form>';
+        box.querySelector('form').addEventListener('submit', async function (e) {
+          e.preventDefault();
+          var btn = this.querySelector('button'); btn.disabled = true;
+          var trip = b.getAttribute('data-trip'), req = b.getAttribute('data-req');
+          var ins = await sb.from('reports').insert({
+            reporter_id: me.id, target_id: b.getAttribute('data-report'),
+            trip_id: trip ? Number(trip) : null, request_id: req ? Number(req) : null,
+            reason: document.getElementById('rpR' + i).value, text: document.getElementById('rpT' + i).value.trim()
+          });
+          if (ins.error) { toast(ins.error.message); btn.disabled = false; return; }
+          box.innerHTML = '<div class="info">' + esc(t('report_sent')) + '</div>';
+          b.remove();
+        });
+      });
+    });
+  }
+
   function tripCard(x) {
     var name = (x.driver && x.driver.name) || t('driver');
-    return '<a class="trip" href="#/trip/' + x.id + '">' +
+    var seats = tripCard.seats || 1;
+    return '<a class="trip" href="#/trip/' + x.id + (seats > 1 ? '?seats=' + seats : '') + '">' +
       '<div class="times"><span class="time num">' + hm(x.depart_at) + '</span><span class="line"></span><span class="small muted">' + esc(dayLabel(x.depart_at)) + '</span></div>' +
       '<div class="row between small"><span>' + place(x.from_region, x.from_district) + '</span><span style="text-align:right">' + place(x.to_region, x.to_district) + '</span></div>' +
+      (x.meeting_point ? '<span class="small meet-line">' + PIN + esc(x.meeting_point) + '</span>' : '') +
       '<div class="row"><span class="ava">' + initials(name) + '</span>' +
       '<div class="grow"><span class="t">' + esc(name) + ' ' + ratingSpan(x.driver_id) + '</span><span class="small muted">' + esc(cardCar(x.driver_id, x.car)) + '</span></div>' +
       '<span class="price num">' + money(x.price) + '</span></div>' +
@@ -527,7 +629,8 @@
   }
 
   // ---------- поездка (пассажир) ----------
-  async function renderTrip(id) {
+  async function renderTrip(id, q) {
+    q = q || {};
     setTab(isDriver() ? 'search' : 'search');
     loading();
     var r = await sb.from('trips').select('*, driver:profiles(name)').eq('id', id).maybeSingle();
@@ -558,12 +661,19 @@
       '<div class="card pad"><div class="row"><span class="ava">' + initials(name) + '</span><div class="grow"><span class="t">' + esc(name) + '</span>' +
       '<span class="small muted">' + esc(cardCar(x.driver_id, x.car)) + ridesText(x.driver_id) + '</span></div>' + ratingLink(x.driver_id) + '</div>' +
       (badges(x.driver_id) ? '<div class="row wrap" style="gap:8px">' + badges(x.driver_id) + '</div>' : '') +
-      (driverPhone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(driverPhone) + '</b>' +
-        (driverPlate ? '<br>' + esc(t('car_number')) + ': <b class="plate">' + esc(driverPlate) + '</b>' : '') + '</div>' : '') +
+      '<span class="small muted">' + esc(ratingCache[x.driver_id] && ratingCache[x.driver_id].verified ? '✓ ' + t('verified_what') : t('not_verified_what')) + '</span>' +
       ((x.options || []).length ? '<div class="row wrap" style="gap:8px">' + x.options.map(function (o) { return '<span class="tag">' + esc(optLabel(o)) + '</span>'; }).join('') + '</div>' : '') +
+      (booking ? reportLink(x.driver_id, { trip: x.id }) : '') +
       '</div>';
 
-    if (booking && booking.status !== 'cancelled') {
+    if (booking && booking.status === 'accepted') {
+      var route = x.from_district + ' → ' + x.to_district, when = dayLabel(x.depart_at) + ', ' + hm(x.depart_at), car = cardCar(x.driver_id, x.car);
+      html += confirmedCard({
+        who: 'driver', name: name, phone: driverPhone, car: car, plate: driverPlate, route: route, when: when,
+        meet: x.meeting_point, seats: booking.seats, total: booking.seats * x.price, sos: true,
+        share: shareText({ route: route, when: when, driver: name, car: car, plate: driverPlate, meet: x.meeting_point })
+      }) + '<button class="btn sec sm" id="cancelBtn">' + esc(t('cancel')) + '</button>' + reviewBlock(myReview);
+    } else if (booking && booking.status !== 'cancelled') {
       html += '<div class="card pad"><div class="row between"><span class="t">' + esc(t('your_request')) + '</span><span class="tag ' + booking.status + '">' + esc(t('st_' + booking.status)) + '</span></div>' +
         '<span class="small muted">' + esc(t('seats_n', { n: booking.seats })) + ' · ' + money(booking.seats * x.price) + '</span>' +
         (booking.status === 'pending' || booking.status === 'accepted' ? '<button class="btn sec sm" id="cancelBtn">' + esc(t('cancel')) + '</button>' : '') + '</div>';
@@ -572,10 +682,11 @@
       html += '<div class="card empty">' + esc(t('prev_cancelled')) + '</div>';
     } else if (x.seats_free > 0 && x.status === 'open' && !me.blocked) {
       var opts = '';
-      for (var i = 1; i <= Math.min(x.seats_free, 4); i++) opts += '<option value="' + i + '">' + esc(t('seats_n', { n: i })) + '</option>';
+      var want = Math.min(Number(q.seats) || 1, x.seats_free, 4);
+      for (var i = 1; i <= Math.min(x.seats_free, 4); i++) opts += '<option value="' + i + '"' + (i === want ? ' selected' : '') + '>' + esc(t('seats_n', { n: i })) + '</option>';
       html += '<div class="card pad"><div class="row between"><label for="seatCount" class="t">' + esc(t('how_many')) + '</label><span class="small muted">' + esc(t('free_n', { n: x.seats_free })) + '</span></div>' +
         '<select id="seatCount" class="btn sec sm" style="font-weight:600">' + opts + '</select>' +
-        '<div class="row between"><span class="muted">' + esc(t('total')) + '</span><span class="price num" id="total">' + money(x.price) + '</span></div>' +
+        '<div class="row between"><span class="muted">' + esc(t('total')) + '</span><span class="price num" id="total">' + money(want * x.price) + '</span></div>' +
         '<div id="bookMsg"></div><button class="btn" id="bookBtn">' + esc(t('book')) + '</button></div>';
     } else if (!me.blocked) {
       html += '<div class="card empty">' + esc(t('no_seats')) + '</div>';
@@ -593,6 +704,7 @@
       renderTrip(id);
     });
     bindReviewForm({ driver_id: x.driver_id, trip_id: x.id }, function () { delete ratingCache[x.driver_id]; renderTrip(id); });
+    bindShare(); bindReports();
     var cancelBtn = $('#cancelBtn');
     if (cancelBtn) cancelBtn.addEventListener('click', async function () {
       cancelBtn.disabled = true;
@@ -603,8 +715,31 @@
     });
   }
 
+  // ---------- черновики форм: введённое не теряется при обрыве связи ----------
+  function saveDraft(key, form) {
+    var v = {};
+    Array.prototype.forEach.call(form.querySelectorAll('input[id],select[id],textarea[id]'), function (el) { v[el.id] = el.value; });
+    $all('.chip.on[data-opt]').forEach(function (c) { (v._opts = v._opts || []).push(c.getAttribute('data-opt')); });
+    try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {}
+  }
+  function loadDraft(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }
+  function clearDraft(key) { try { localStorage.removeItem(key); } catch (e) {} }
+  // Заполнить форму значениями; после смены области перестраиваем список районов
+  function fillForm(form, v) {
+    Array.prototype.forEach.call(form.querySelectorAll('input[id],select[id],textarea[id]'), function (el) {
+      if (v[el.id] == null || el.type === 'date' && v[el.id] < isoDate()) return;
+      el.value = v[el.id];
+      if (el.tagName === 'SELECT' && window.REGIONS[el.value]) el.dispatchEvent(new Event('change'));
+    });
+  }
+  function bindDraft(key, form) {
+    var save = function () { saveDraft(key, form); };
+    form.addEventListener('input', save); form.addEventListener('change', save); form.addEventListener('click', function () { setTimeout(save, 0); });
+  }
+
   // ---------- новая поездка (водитель) ----------
-  function renderAdd() {
+  async function renderAdd(q) {
+    q = q || {};
     setTab('add');
     if (!isDriver()) {
       view.innerHTML = '<h1>' + esc(t('add_title')) + '</h1><div class="card empty">' + esc(t('driver_only')) + '</div>' +
@@ -622,7 +757,9 @@
       '<label for="tToD" style="margin-top:8px">' + esc(t('district')) + '</label><select id="tToD">' + districtOptions('Samarqand') + '</select></div></div>' +
       '<div class="f"><div class="grow two"><div><label for="tDate">' + esc(t('date')) + '</label><input id="tDate" type="date" required min="' + isoDate() + '" value="' + tomorrow() + '"></div>' +
       '<div><label for="tTime">' + esc(t('depart_time')) + '</label><input id="tTime" type="time" required value="07:00"></div></div></div>' +
-      '<div class="f"><div class="grow"><label for="tMeet">' + esc(t('meet')) + '</label><input id="tMeet" placeholder="' + esc(t('meet_ph')) + '"></div></div>' +
+      '<div class="f" style="flex-direction:column;align-items:stretch;gap:10px"><span class="lbl">' + esc(t('more_days')) + '</span><div class="chips" id="tDays">' +
+      [1, 2, 3, 4, 5, 6, 7].map(function (k) { var d = new Date(); d.setDate(d.getDate() + k); return '<button type="button" class="chip" data-day="' + isoDate(d) + '">' + esc(dayLabel(d)) + '</button>'; }).join('') + '</div></div>' +
+      '<div class="f"><div class="grow"><label for="tMeet">' + esc(t('meet')) + '</label><input id="tMeet" list="meetList" maxlength="120" placeholder="' + esc(t('meet_ph')) + '">' + meetList() + '</div></div>' +
       '<div class="f"><div class="grow"><label for="tCar">' + esc(t('car')) + '</label><input id="tCar" required value="' + esc(carText(me.drv)) + '" placeholder="' + esc(t('car_ph')) + '"></div></div>' +
       '<div class="f"><div class="grow two"><div><label for="tSeats">' + esc(t('seats_lbl')) + '</label><select id="tSeats"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></div>' +
       '<div><label for="tPrice">' + esc(t('price_lbl')) + '</label><input id="tPrice" type="number" inputmode="numeric" min="0" step="1000" required placeholder="' + esc(t('price_ph')) + '"></div></div></div>' +
@@ -634,6 +771,29 @@
     $all('[data-opt]').forEach(function (c) {
       c.addEventListener('click', function () { var o = c.getAttribute('data-opt'); chosen[o] = !chosen[o]; c.classList.toggle('on', chosen[o]); });
     });
+    var days = {};
+    $all('[data-day]').forEach(function (c) {
+      c.addEventListener('click', function () { var d = c.getAttribute('data-day'); days[d] = !days[d]; c.classList.toggle('on', days[d]); });
+    });
+    var form = $('#addForm');
+    // «Повторить рейс»: берём маршрут, время, места, цену и удобства прошлой поездки
+    var prev = null;
+    if (q.copy) {
+      var pr = await sb.from('trips').select('*').eq('id', q.copy).eq('driver_id', me.id).maybeSingle();
+      if (pr.data) {
+        var x = pr.data;
+        prev = { tFrom: x.from_region, tFromD: x.from_district, tTo: x.to_region, tToD: x.to_district, tTime: hm(x.depart_at),
+          tMeet: x.meeting_point, tCar: x.car, tSeats: String(x.seats_total), tPrice: String(x.price), _opts: x.options || [] };
+      }
+    } else {
+      prev = loadDraft('yolda-draft-trip');
+      if (prev) toast(t('draft_restored'));
+    }
+    if (prev) {
+      fillForm(form, prev);
+      (prev._opts || []).forEach(function (o) { chosen[o] = true; var c = form.querySelector('[data-opt="' + o + '"]'); if (c) c.classList.add('on'); });
+    }
+    bindDraft('yolda-draft-trip', form);
     $('#addForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var btn = this.querySelector('button[type=submit]'); btn.disabled = true;
@@ -641,20 +801,27 @@
       var msg = $('#addMsg'); msg.innerHTML = '';
       if (depart < new Date()) { msg.innerHTML = errorBox({ message: t('time_passed') }); btn.disabled = false; return; }
       if ($('#tFrom').value === $('#tTo').value && $('#tFromD').value === $('#tToD').value) { msg.innerHTML = errorBox({ message: t('same_place') }); btn.disabled = false; return; }
-      var seats = Number($('#tSeats').value);
-      var ins = await sb.from('trips').insert({
-        driver_id: me.id,
-        from_region: $('#tFrom').value, from_district: $('#tFromD').value,
-        to_region: $('#tTo').value, to_district: $('#tToD').value,
-        depart_at: depart.toISOString(),
-        meeting_point: $('#tMeet').value.trim(), car: $('#tCar').value.trim(),
-        seats_total: seats, seats_free: seats,
-        price: Number($('#tPrice').value),
-        options: OPTIONS.filter(function (o) { return chosen[o.key]; }).map(function (o) { return o.key; })
-      }).select('id').single();
+      var seats = Number($('#tSeats').value), time = $('#tTime').value;
+      // Основная дата + отмеченные дополнительные дни — по рейсу на каждый день
+      var dates = [$('#tDate').value].concat(Object.keys(days).filter(function (d) { return days[d]; }))
+        .filter(function (d, i, a) { return a.indexOf(d) === i; }).sort();
+      var rows = dates.map(function (d) {
+        return {
+          driver_id: me.id,
+          from_region: $('#tFrom').value, from_district: $('#tFromD').value,
+          to_region: $('#tTo').value, to_district: $('#tToD').value,
+          depart_at: new Date(d + 'T' + time + ':00').toISOString(),
+          meeting_point: $('#tMeet').value.trim(), car: $('#tCar').value.trim(),
+          seats_total: seats, seats_free: seats,
+          price: Number($('#tPrice').value),
+          options: OPTIONS.filter(function (o) { return chosen[o.key]; }).map(function (o) { return o.key; })
+        };
+      }).filter(function (r) { return new Date(r.depart_at) > new Date(); });
+      var ins = await sb.from('trips').insert(rows).select('id');
       if (ins.error) { msg.innerHTML = errorBox(ins.error); btn.disabled = false; return; }
-      toast(t('published'));
-      location.hash = '#/driver/' + ins.data.id;
+      clearDraft('yolda-draft-trip');
+      toast(rows.length > 1 ? t('published_n', { n: rows.length }) : t('published'));
+      location.hash = rows.length > 1 ? '#/mine' : '#/driver/' + ins.data[0].id;
     });
   }
 
@@ -675,7 +842,7 @@
     var accepted = list.filter(function (y) { return y.status === 'accepted'; });
 
     view.innerHTML = '<div class="row">' + back('#/mine') + '<h1>' + esc(t('my_trip')) + '</h1></div>' +
-      '<div class="hero" style="gap:12px"><div class="row between"><span class="small">' + esc(x.status === 'open' ? t('published_lbl') : t('cancelled_lbl')) + '</span>' +
+      '<div class="hero plain" style="gap:12px"><div class="row between"><span class="small">' + esc(x.status === 'open' ? t('published_lbl') : t('cancelled_lbl')) + '</span>' +
       '<span class="small t">' + esc(dayLabel(x.depart_at)) + ' · ' + hm(x.depart_at) + '</span></div>' +
       '<span class="big">' + esc(x.from_district) + ' → ' + esc(x.to_district) + '</span>' +
       '<div class="row between"><span class="small">' + esc(t('booked_seats')) + '</span><span class="t num">' + taken + ' / ' + x.seats_total + '</span></div>' +
@@ -691,10 +858,15 @@
       '<h2>' + esc(t('passengers')) + '</h2>' +
       (accepted.length ? '<div class="card">' + accepted.map(function (y) {
         var n = (y.passenger && y.passenger.name) || t('passenger');
-        return '<div class="row" style="padding:14px 16px"><span class="ava">' + initials(n) + '</span><div class="grow"><span class="t">' + esc(n) + '</span>' +
-          '<span class="small muted num">' + esc(t('seats_n', { n: y.seats })) + ' · ' + esc(phoneOf[y.passenger_id] || '') + '</span></div></div>';
+        var ph = phoneOf[y.passenger_id] || '';
+        return '<div class="pax"><div class="row"><span class="ava">' + initials(n) + '</span><div class="grow"><span class="t">' + esc(n) + '</span>' +
+          '<span class="small muted num">' + esc(t('seats_n', { n: y.seats })) + ' · ' + esc(ph) + '</span></div></div>' +
+          (ph ? '<div class="actions"><a class="btn sm" href="' + telHref(ph) + '">' + esc(t('call')) + '</a><a class="btn sec sm" href="' + smsHref(ph) + '">' + esc(t('write')) + '</a></div>' : '') +
+          reportLink(y.passenger_id, { trip: x.id }) + '</div>';
       }).join('') + '</div>' : '<div class="card empty">' + esc(t('no_passengers')) + '</div>') +
+      '<a class="btn sec" href="#/add?copy=' + x.id + '">' + esc(t('repeat_trip')) + '</a>' +
       (x.status === 'open' ? '<button class="btn sec" id="cancelTrip">' + esc(t('cancel_trip')) + '</button>' : '');
+    bindReports();
 
     $all('[data-act]').forEach(function (btn) {
       btn.addEventListener('click', async function () {
@@ -854,7 +1026,11 @@
       '<div id="rMsg"></div><button class="btn" type="submit">' + esc(t('req_publish')) + '</button></form>';
     bindRegion('rFrom', 'rFromD');
     bindRegion('rTo', 'rToD');
-    $('#rForm').addEventListener('submit', async function (e) {
+    var rf = $('#rForm');
+    if (!q.from) { var dr = loadDraft('yolda-draft-req'); if (dr) { fillForm(rf, dr); toast(t('draft_restored')); } }
+    else if (q.seats) $('#rSeats').value = String(Math.min(4, Number(q.seats) || 1));
+    bindDraft('yolda-draft-req', rf);
+    rf.addEventListener('submit', async function (e) {
       e.preventDefault();
       var btn = this.querySelector('button[type=submit]'); btn.disabled = true;
       var msg = $('#rMsg'); msg.innerHTML = '';
@@ -868,6 +1044,7 @@
         seats: Number($('#rSeats').value), budget: budget, comment: $('#rComment').value.trim()
       }).select('id').single();
       if (ins.error) { msg.innerHTML = errorBox(ins.error); btn.disabled = false; return; }
+      clearDraft('yolda-draft-req');
       toast(t('req_published'));
       location.hash = '#/request/' + ins.data.id;
     });
@@ -1035,14 +1212,24 @@
         '<div class="grow"><span class="t">' + esc(n) + ' ' + ratingLink(x.driver_id) + '</span><span class="small muted">' + esc(cardCar(x.driver_id, x.car)) + ' · ' + esc(x.depart_time) + ridesText(x.driver_id) + '</span></div>' +
         '<span class="price num">' + money(x.price) + '</span></div>' +
         (badges(x.driver_id) ? '<div class="row wrap" style="gap:8px">' + badges(x.driver_id) + '</div>' : '') +
+        (x.meeting_point ? '<span class="small meet-line">' + PIN + esc(x.meeting_point) + '</span>' : '') +
         (x.comment ? '<span class="small muted">' + esc(x.comment) + '</span>' : '') +
-        (chosen ? '<span class="tag" style="align-self:flex-start">' + esc(t('rq_closed')) + '</span>' + (phone ? '<div class="info">' + esc(t('driver_phone')) + ': <b class="num">' + esc(phone) + '</b>' + (plate ? '<br>' + esc(t('car_number')) + ': <b class="plate">' + esc(plate) + '</b>' : '') + '</div>' : '') : '') +
+        (chosen ? '<span class="tag" style="align-self:flex-start">' + esc(t('rq_closed')) + '</span>' + reportLink(x.driver_id, { req: req.id }) : '') +
         (req.status === 'open' && x.status === 'pending' && !me.blocked ? '<button class="btn sm" data-choose="' + x.id + '">' + esc(t('choose')) + '</button>' : '') +
         '</div>';
     }).join('');
-    if (chosenOffer) html += reviewBlock(myReview);
+    if (chosenOffer) {
+      var cn = (chosenOffer.driver && chosenOffer.driver.name) || t('driver'), ccar = cardCar(chosenOffer.driver_id, chosenOffer.car);
+      var croute = req.from_district + ' → ' + req.to_district, cwhen = dateLabel(req.ride_date) + ', ' + chosenOffer.depart_time;
+      html += confirmedCard({
+        who: 'driver', name: cn, phone: phone, car: ccar, plate: plate, route: croute, when: cwhen, meet: chosenOffer.meeting_point,
+        total: chosenOffer.price, sos: true,
+        share: shareText({ route: croute, when: cwhen, driver: cn, car: ccar, plate: plate, meet: chosenOffer.meeting_point })
+      }) + reviewBlock(myReview);
+    }
     if (req.status === 'open') html += '<button class="btn sec" id="cancelReq">' + esc(t('cancel_req')) + '</button>';
     view.innerHTML = html;
+    bindShare(); bindReports();
     if (chosenOffer) bindReviewForm({ driver_id: chosenOffer.driver_id, request_id: req.id }, function () { delete ratingCache[chosenOffer.driver_id]; renderRequest(req.id); });
 
     $all('[data-choose]').forEach(function (b) {
@@ -1077,8 +1264,16 @@
       var cls = my.status === 'accepted' ? '' : my.status === 'pending' ? ' pending' : ' cancelled';
       html += '<div class="card pad"><div class="row between"><span class="t">' + esc(t('your_offer')) + '</span><span class="tag' + cls + '">' + esc(t('of_' + my.status)) + '</span></div>' +
         '<span class="small muted">' + esc(my.depart_time) + ' · ' + esc(my.car) + ' · ' + money(my.price) + '</span>' +
-        (phone ? '<div class="info">' + esc(t('passenger_phone')) + ': <b class="num">' + esc(phone) + '</b></div>' : '') +
+        (my.meeting_point ? '<span class="small meet-line">' + PIN + esc(my.meeting_point) + '</span>' : '') +
+        (my.status === 'accepted' ? reportLink(req.passenger_id, { req: req.id }) : '') +
         (my.status === 'pending' ? '<button class="btn sec sm" id="withdraw">' + esc(t('withdraw')) + '</button>' : '') + '</div>';
+      if (my.status === 'accepted') {
+        html += confirmedCard({
+          who: 'passenger', name: (req.passenger && req.passenger.name) || t('passenger'), phone: phone,
+          route: req.from_district + ' → ' + req.to_district, when: dateLabel(req.ride_date) + ', ' + my.depart_time,
+          meet: my.meeting_point, total: my.price, seats: req.seats
+        });
+      }
     } else if (req.status !== 'open') {
       html += '<div class="card empty">' + esc(t('req_closed_note')) + '</div>';
     } else if (!isDriver()) {
@@ -1091,6 +1286,7 @@
       html += '<form class="card form" id="oForm">' +
         '<div class="f"><div class="grow"><label for="oCar">' + esc(t('car')) + '</label><input id="oCar" required maxlength="80" value="' + esc(lastCar) + '" placeholder="' + esc(t('car_ph')) + '"></div></div>' +
         '<div class="f"><div class="grow"><label for="oTime">' + esc(t('depart_time')) + '</label><input id="oTime" type="time" required value="' + defTime + '"></div></div>' +
+        '<div class="f"><div class="grow"><label for="oMeet">' + esc(t('meet')) + '</label><input id="oMeet" list="meetList" maxlength="120" placeholder="' + esc(t('meet_ph')) + '">' + meetList() + '</div></div>' +
         (req.budget
           ? '<button class="btn" type="button" id="agreeBtn">' + esc(t('agree_price', { p: money(req.budget) })) + '</button>' +
             '<div class="or"><span>' + esc(t('or_own_price')) + '</span></div>'
@@ -1112,7 +1308,7 @@
       try { localStorage.setItem('yolda-car', car); } catch (e) {}
       var ins = await sb.from('offers').insert({
         request_id: req.id, driver_id: me.id, price: price,
-        depart_time: time, car: car, comment: $('#oComment').value.trim()
+        depart_time: time, car: car, comment: $('#oComment').value.trim(), meeting_point: $('#oMeet').value.trim()
       });
       if (ins.error) { msg.innerHTML = errorBox(ins.error); btn.disabled = false; return; }
       toast(t('offer_sent')); renderRequest(req.id);
@@ -1124,6 +1320,7 @@
     });
     var agree = $('#agreeBtn');
     if (agree) agree.addEventListener('click', function () { sendOffer(Number(req.budget), agree); });
+    bindReports();
     var wd = $('#withdraw');
     if (wd) wd.addEventListener('click', async function () {
       wd.disabled = true;
@@ -1238,7 +1435,7 @@
     tab = tab || renderAdmin.tab || 'users';
     renderAdmin.tab = tab;
     loading();
-    var listCall = tab === 'users' ? sb.rpc('admin_users') : tab === 'drivers' ? sb.rpc('admin_drivers') : tab === 'trips' ? sb.rpc('admin_trips') : sb.rpc('admin_requests');
+    var listCall = tab === 'users' ? sb.rpc('admin_users') : tab === 'drivers' ? sb.rpc('admin_drivers') : tab === 'trips' ? sb.rpc('admin_trips') : tab === 'reports' ? sb.rpc('admin_reports') : sb.rpc('admin_requests');
     var res = await Promise.all([sb.rpc('admin_stats'), listCall]);
     if (res[0].error || res[1].error) { view.innerHTML = '<h1>' + esc(t('admin_title')) + '</h1>' + errorBox(res[0].error || res[1].error); return; }
     var s = res[0].data[0] || {};
@@ -1247,13 +1444,25 @@
       '<div class="stats">' + stat('s_users', s.users) + stat('s_drivers', s.drivers) + stat('s_passengers', s.passengers) + stat('s_blocked', s.blocked) +
       stat('s_trips_open', s.trips_open) + stat('s_trips_total', s.trips_total) + stat('s_bookings', s.bookings_total) + stat('s_accepted', s.bookings_accepted) + '</div>' +
       '<div class="seg seg4">' +
-      ['users', 'drivers', 'trips', 'requests'].map(function (k) {
+      ['users', 'drivers', 'reports', 'trips', 'requests'].map(function (k) {
         return '<button type="button" data-atab="' + k + '" class="' + (tab === k ? 'on' : '') + '">' + esc(t('a_' + k)) + '</button>';
       }).join('') + '</div>';
 
     var rows = res[1].data || [];
     if (tab === 'drivers') {
       html += adminDriversHtml(rows);
+    } else if (tab === 'reports') {
+      html += rows.map(function (r) {
+        return '<div class="card pad"><div class="row between"><span class="tag ' + (r.status === 'open' ? 'pending' : '') + '">' + esc(t('rs_' + r.status)) + '</span>' +
+          '<span class="small muted">' + esc(dayLabel(r.created_at)) + ' · ' + hm(r.created_at) + '</span></div>' +
+          '<span class="t">' + esc(t('rr_' + r.reason)) + '</span>' + (r.text ? '<p class="small">' + esc(r.text) + '</p>' : '') +
+          '<span class="small muted">' + esc(t('report_from')) + ': ' + esc(r.reporter_name || '—') + ' · ' + esc(t('report_on')) + ': <b>' + esc(r.target_name || '—') + '</b> <span class="num">' + esc(r.target_phone || '') + '</span></span>' +
+          '<div class="row wrap" style="gap:8px"><span class="tag' + (Number(r.target_reports) > 1 ? ' cancelled' : '') + '">' + esc(t('reports_on', { n: r.target_reports })) + '</span>' +
+          (r.target_blocked ? '<span class="tag cancelled">' + esc(t('blocked_badge')) + '</span>' : '') +
+          (r.request_id ? '<a class="tag" href="#/request/' + r.request_id + '">' + esc(t('open_lbl')) + '</a>' : '') + '</div>' +
+          '<div class="two">' + (r.status === 'open' ? '<button class="btn sm" data-resolve="' + r.id + '">' + esc(t('resolve')) + '</button>' : '<span></span>') +
+          '<button class="btn sec sm" data-block="' + r.target_id + '" data-val="' + (!r.target_blocked) + '">' + esc(r.target_blocked ? t('unblock') : t('block')) + '</button></div></div>';
+      }).join('') || '<div class="card empty">—</div>';
     } else if (tab === 'users') {
       html += rows.map(function (u) {
         var self = u.id === me.id;
@@ -1294,6 +1503,14 @@
 
     $all('[data-atab]').forEach(function (b) { b.addEventListener('click', function () { renderAdmin(b.getAttribute('data-atab')); }); });
     if (tab === 'drivers') bindAdminDrivers();
+    $all('[data-resolve]').forEach(function (b) {
+      b.addEventListener('click', async function () {
+        b.disabled = true;
+        var r = await sb.rpc('admin_resolve_report', { p_report: Number(b.getAttribute('data-resolve')) });
+        if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
+        toast(t('saved')); renderAdmin('reports');
+      });
+    });
     confirmClick('[data-block]', async function (b) {
       var r = await sb.rpc('admin_set_blocked', { p_user: b.getAttribute('data-block'), p_blocked: b.getAttribute('data-val') === 'true' });
       if (r.error) { toast(adminError(r.error)); b.disabled = false; return; }
@@ -1345,8 +1562,8 @@
       switch (parts[0]) {
         case 'login': renderLogin(); break;
         case 'results': await renderResults(q); break;
-        case 'trip': await renderTrip(parts[1]); break;
-        case 'add': renderAdd(); break;
+        case 'trip': await renderTrip(parts[1], q); break;
+        case 'add': await renderAdd(q); break;
         case 'driver': await renderDriver(parts[1]); break;
         case 'mine': await renderMine(); break;
         case 'profile': renderProfile(); break;
@@ -1359,12 +1576,24 @@
         default: renderSearch();
       }
     } catch (e) {
-      view.innerHTML = errorBox(e) + '<a class="btn sec" href="' + homeHash() + '">' + esc(t('home')) + '</a>';
+      view.innerHTML = errorBox(navigator.onLine === false ? { message: t('offline') } : e) +
+        '<button class="btn" id="retryBtn">' + esc(t('retry')) + '</button><a class="btn sec" href="' + homeHash() + '">' + esc(t('home')) + '</a>';
+      document.getElementById('retryBtn').addEventListener('click', route);
     }
   }
 
   window.addEventListener('hashchange', route);
+  // Нет связи — показываем плашку; связь вернулась — обновляем экран, если на нём была ошибка
+  function netBanner() {
+    var el = document.getElementById('offline');
+    if (!el) { el = document.createElement('div'); el.id = 'offline'; el.className = 'offline'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+    el.textContent = t('offline');
+    el.hidden = navigator.onLine !== false;
+  }
+  window.addEventListener('offline', netBanner);
+  window.addEventListener('online', function () { netBanner(); if (view.querySelector('.err')) route(); });
   (async function start() {
+    netBanner();
     if (sb) {
       await loadMe();
       sb.auth.onAuthStateChange(function (evt) {
